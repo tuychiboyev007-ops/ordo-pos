@@ -1,0 +1,19 @@
+{
+  "name": "ordo-pos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ordo — restoran va kafe uchun kassa (POS) tizimi",
+  "scripts": {
+    "dev": "node dev/server.mjs",
+    "demo": "node dev/server.mjs --reset-demo",
+    "test": "node test/api.test.mjs",
+    "agent": "node agent/ordo-agent.mjs"
+  },
+  "dependencies": {
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.5"
+  }
+}

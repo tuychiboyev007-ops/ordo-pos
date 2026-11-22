@@ -1,0 +1,9 @@
+node_modules/
+.data/
+agent/ordo-agent.json
+*.log
+.DS_Store
+
+# kirish ma'lumotlari — faqat shu kompyuterda
+docs/LOCAL.md
+seed.local.json

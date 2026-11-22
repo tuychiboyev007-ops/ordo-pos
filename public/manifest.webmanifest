@@ -1,0 +1,2 @@
+{ "name": "ordo — kassa", "short_name": "ordo", "start_url": "/kassa", "scope": "/", "display": "standalone",
+  "background_color": "#14213d", "theme_color": "#14213d", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }

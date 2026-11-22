@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14213d">
+<title>ordo — restoran kassasi</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/ordo.css">
+<style>
+body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+.hd{background:var(--teal);color:#fff;height:88px;flex:none;display:flex;align-items:center;padding:0 40px}
+.hd .logo{gap:12px}.hd .logo b{color:#fff;font-size:36px}.hd .logo .mk{color:#fff}.hd .logo .mk svg{width:46px;height:46px}
+.wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.box{width:100%;max-width:440px;background:var(--card);border-radius:28px;padding:36px 34px;box-shadow:0 10px 40px rgba(20,33,61,.10)}
+.box h1{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.box .sub{color:var(--muted);margin:8px 0 26px;font-size:15.5px}
+.box .input{height:52px;border-radius:14px;font-size:16px;background:var(--card-2)}
+.box .btn{height:56px;font-size:17px;margin-top:6px}
+.orda{position:relative;margin-top:auto;line-height:0;flex:none}
+.orda img{display:block;width:100%;height:auto;max-height:300px;object-fit:cover;object-position:bottom}
+.orda span{display:block;text-align:center;line-height:1;font-size:12.5px;font-weight:600;letter-spacing:.32em;color:var(--ink-3);padding:12px 0 16px;background:#f3f6f1}
+.wrap{padding-bottom:12px}
+</style>
+</head>
+<body>
+<header class="hd"><div class="logo"><span class="mk"><svg class="omark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="17" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46" cy="18" r="7" fill="#e4572e"/></svg></span><b>ordo</b></div></header>
+<main class="wrap">
+  <form class="box" id="f" autocomplete="on">
+    <h1>Kassaga kirish</h1>
+    <p class="sub">Egasi yoki menejer bir marta kiradi. Keyin xodimlar PIN‑kod bilan ishlaydi.</p>
+    <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" required autocomplete="username"></div>
+    <div class="field"><label for="pw">Parol</label><input class="input" id="pw" type="password" required autocomplete="current-password"></div>
+    <input type="hidden" id="dev" value="Kassa">
+    <p class="err" id="err" hidden></p>
+    <button class="btn primary block" id="go">Kirish</button>
+    <p class="hint" id="demo" hidden style="margin-top:16px;text-align:center">Namuna: <b>demo@ordo.uz</b> / <b>ordo2026</b></p>
+  </form>
+</main>
+<div class="orda"><img src="/img/xudoyorxon-orda.svg?v=3" alt="Xudoyorxon O'rdasi, Qo'qon" width="1440" height="330"><span>XUDOYORXON O'RDASI · QO'QON</span></div>
+<script type="module">
+import { post, deviceToken, setDeviceToken } from '/js/api.js';
+const q = new URLSearchParams(location.search);
+if (deviceToken() && !q.has('qurilma')) location.replace('/kassa');
+if (['localhost', '127.0.0.1'].includes(location.hostname)) document.getElementById('demo').hidden = false;
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err'); err.hidden = true;
+  const b = document.getElementById('go'); b.disabled = true; b.textContent = 'Kirilmoqda…';
+  try {
+    const r = await post('/api/device/login', { email: email.value.trim(), password: pw.value, device: dev.value.trim() }, { auth: null });
+    setDeviceToken(r.token);
+    // Yuborilmagan amallar (ordo.outbox) O'CHIRILMAYDI — kirgandan keyin serverga yuboriladi.
+    ['ordo.boot', 'ordo.orders', 'ordo.recent', 'ordo.shift', 'ordo.notes', 'ordo.stop', 'ordo.counter'].forEach((k) => localStorage.removeItem(k));
+    location.replace('/kassa');
+  } catch (x) { err.textContent = x.message; err.hidden = false; b.disabled = false; b.textContent = 'Kirish'; }
+});
+</script>
+</body>
+</html>
