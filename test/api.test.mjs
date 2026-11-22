@@ -13,9 +13,18 @@ let pass = 0; let failN = 0;
 const ok = (cond, name, extra) => { if (cond) { pass++; } else { failN++; console.log('  XATO:', name, extra ?? ''); } };
 const group = (n) => console.log('—', n);
 
-const pg = new PGlite();
-const db = makeDb(pgliteClient(pg));
-await migrate(db);
+// TEST_DATABASE_URL berilsa — haqiqiy Postgres (Neon) ustida, postgres.js drayveri bilan.
+// FAQAT bo'sh sinov bazasida ishlating: sinov o'z restoranlarini yaratadi.
+let db; let endDb = () => {};
+if (process.env.TEST_DATABASE_URL) {
+  const { openDb, ensureSchema } = await import('../src/lib/pg.js');
+  const o = openDb(process.env.TEST_DATABASE_URL);
+  db = o.db; endDb = () => o.sql.end({ timeout: 5 });
+  await ensureSchema(db);
+} else {
+  db = makeDb(pgliteClient(new PGlite()));
+  await migrate(db);
+}
 const env = { AUTH_SECRET: 'test-secret-1234567890', SETUP_OPEN: '1' };
 
 async function call(method, path, body, token) {
@@ -551,4 +560,5 @@ try { await db.all('SELECT * FROM orders'); } catch (e) { threw = e.code === 'NO
 ok(threw, 'company_id siz so\'rov bajarilmaydi');
 
 console.log(`\n${pass} ok, ${failN} xato`);
+await endDb();
 process.exit(failN ? 1 : 0);

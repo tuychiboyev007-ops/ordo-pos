@@ -7,3 +7,7 @@ agent/ordo-agent.json
 # kirish ma'lumotlari — faqat shu kompyuterda
 docs/LOCAL.md
 seed.local.json
+
+# Vercel / Neon
+.vercel
+.env*
