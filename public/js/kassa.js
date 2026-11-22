@@ -3,7 +3,7 @@
  * Ko'rinishlar: zal (stollar), olib ketish, yetkazish, buyurtma (menyu + chek), buyurtmalar tarixi,
  * smena (kassa puli, rasxod, qarz to'lovi, X/Z hisobot), eslatmalar. Kirish — PIN bilan (qulf ekrani).
  */
-import { totals, lineSum, TYPE_NAMES, PAY_NAMES, PAY_METHODS, ROLE_NAMES, MANAGER_ROLES, shiftSummary, botStatusName } from './core.js';
+import { totals, lineSum, modSum, modsText, modsKey, TYPE_NAMES, PAY_NAMES, PAY_METHODS, ROLE_NAMES, MANAGER_ROLES, shiftSummary, botStatusName } from './core.js';
 import { S, on, start, refreshBoot, dispatch, openOrders, order, shift, notes, nextNumber, stationName, tableName, hallOf, staffName, setting, flushSoon } from './store.js';
 import { deviceToken, get, post } from './api.js';
 import { $, $$, esc, sum, qty, time, dateTime, since, uid, initials, icon, toast, openModal, confirmBox, numberBox, isTopModal, MARK } from './ui.js';
@@ -23,6 +23,8 @@ const isManager = () => MANAGER_ROLES.includes(S.user?.role);
 const fail = (e) => toast(e?.message || 'Xatolik', 'bad');
 const avatar = (u, size = 32) => `<span class="av" style="background:${esc(u?.color || '#3d4a63')};width:${size}px;height:${size}px">${esc(initials(u?.name))}</span>`;
 const cats = () => S.boot?.categories || [];
+/** Taomga tegishli qo'shimcha guruhlari (pishloq, sous...). */
+const modsOf = (pid) => (S.boot?.modgroups || []).filter((g) => g.product_ids.includes(pid) && g.mods.length);
 const products = () => S.boot?.products || [];
 
 // =================== Qobiq ===================
@@ -237,7 +239,7 @@ function renderTicket() {
     const st = can ? `<span class="st bad">Bekor · ${esc(it.cancel_reason || '')}</span>` : isNew ? '<span class="st new">Yangi</span>' : `<span class="st">${icon('send')}${time(it.sent_at)}</span>`;
     return `<div class="tk-line ${isNew ? 'new' : ''} ${can ? 'cancelled' : ''} ${on ? 'on' : ''}" data-line="${it.id}">
       <span class="q">${qlabel}</span><span class="nm">${esc(it.name)}</span><span class="sm">${sum(lineSum(it))}</span>
-      <span class="meta">${it.comment ? `<span class="cm">${icon('note')}${esc(it.comment)}</span>` : ''}${st}${on && isNew && it.unit !== 'kg'
+      <span class="meta">${it.mods?.length ? `<span class="md">${esc(modsText(it))}</span>` : ''}${it.comment ? `<span class="cm">${icon('note')}${esc(it.comment)}</span>` : ''}${st}${on && isNew && it.unit !== 'kg'
         ? `<span class="qc"><button data-dec="${it.id}" aria-label="Kamaytirish">${icon('minus')}</button><button data-inc="${it.id}" aria-label="Ko'paytirish">${icon('plus')}</button></span>` : ''}</span></div>`;
   };
   const chips = [base.type === 'zal' ? `<button data-guests>${icon('users')}${base.guests || 0} mehmon</button>` : '',
@@ -324,17 +326,56 @@ async function addProduct(p, opts = {}) {
       renderTop();
     }
     const o = current();
-    const same = p.unit !== 'kg' && o.items.find((i) => i.status === 'new' && i.product_id === p.id && !i.comment);
+    const mods = opts.mods || [];
+    const same = p.unit !== 'kg' && o.items.find((i) => i.status === 'new' && i.product_id === p.id && !i.comment && modsKey(i.mods) === modsKey(mods));
     if (same) { dispatch('qty', { item_id: same.id, qty: same.qty + q }, o.id); ui.sel = same.id; }
     else {
       const cat = cats().find((c) => c.id === p.category_id);
       const iid = uid('i');
-      dispatch('add', { item: { id: iid, product_id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit, station_id: p.station_id || cat?.station_id || null } }, o.id);
+      dispatch('add', { item: { id: iid, product_id: p.id, name: p.name, base: p.price, price: p.price + modSum(mods), mods, qty: q, unit: p.unit, station_id: p.station_id || cat?.station_id || null } }, o.id);
       ui.sel = iid;
     }
     const tile = $(`#pgrid [data-p="${p.id}"]`); tile?.classList.remove('flash'); void tile?.offsetWidth; tile?.classList.add('flash');
     renderTicket(); renderCounts(); renderRail();
   } catch (e) { fail(e); }
+}
+
+/** Qo'shimchalarni tanlash: majburiy guruhdan bittasi, ixtiyoriylardan istalgancha. */
+function modPicker(p, { qty: q0 = 1, current = null } = {}) {
+  const groups = modsOf(p.id);
+  const sel = new Set((current || []).map((m) => m.id));
+  const editing = !!current;
+  return openModal({
+    title: `${p.name} — qo'shimchalar`, size: 'wide',
+    body: `<div class="mpick">${groups.map((g) => `<section class="mg" data-g="${g.id}"><h4>${esc(g.name)}<small>${g.required ? 'majburiy · ' : ''}${g.multi ? 'bir nechtasini tanlash mumkin' : 'bittasini tanlang'}</small></h4>
+        <div class="mgrid">${g.mods.map((m) => `<button class="mtile" data-mod="${m.id}" data-g="${g.id}"><span>${esc(m.name)}</span><b>${m.price ? '+ ' + sum(m.price) : 'bepul'}</b></button>`).join('')}</div></section>`).join('')}
+      ${!editing && p.unit !== 'kg' ? `<div class="mqty"><span>Soni</span><button data-qm="-">${icon('minus')}</button><b data-q>${q0}</b><button data-qm="+">${icon('plus')}</button></div>` : ''}</div>`,
+    foot: `<span class="mtot" data-tot></span><button class="btn" data-x>Bekor</button><button class="btn pay lg" data-ok>${editing ? 'Saqlash' : 'Qo\'shish'}</button>`,
+    onOpen: (m, close) => {
+      let q = q0;
+      const all = new Map(groups.flatMap((g) => g.mods.map((x) => [x.id, { ...x, g }])));
+      const draw = () => {
+        m.querySelectorAll('.mtile').forEach((b) => b.classList.toggle('on', sel.has(Number(b.dataset.mod))));
+        const per = p.price + [...sel].reduce((s_, id) => s_ + (all.get(id)?.price || 0), 0);
+        m.querySelector('[data-tot]').innerHTML = `${sum(per)}${q > 1 ? ` × ${q} = <b>${sum(per * q)}</b>` : ''}`;
+        const qb = m.querySelector('[data-q]'); if (qb) qb.textContent = q;
+      };
+      m.querySelectorAll('.mtile').forEach((b) => b.onclick = () => {
+        const id = Number(b.dataset.mod); const g = all.get(id).g;
+        if (sel.has(id)) sel.delete(id);
+        else { if (!g.multi) g.mods.forEach((x) => sel.delete(x.id)); sel.add(id); }
+        draw();
+      });
+      m.querySelectorAll('[data-qm]').forEach((b) => b.onclick = () => { q = Math.max(1, q + (b.dataset.qm === '+' ? 1 : -1)); draw(); });
+      m.querySelector('[data-ok]').onclick = () => {
+        const miss = groups.find((g) => g.required && !g.mods.some((x) => sel.has(x.id)));
+        if (miss) { toast(`«${miss.name}» — tanlash shart`, 'bad'); m.querySelector(`.mg[data-g="${miss.id}"]`)?.classList.add('need'); return; }
+        const mods = groups.flatMap((g) => g.mods.filter((x) => sel.has(x.id)).map((x) => ({ id: x.id, name: x.name, price: x.price })));
+        close({ mods, qty: q });
+      };
+      draw();
+    },
+  });
 }
 
 async function sendKitchen(silent = false, id = null) {
@@ -366,6 +407,7 @@ async function lineMenu(id) {
     title: it.name,
     body: `<p class="hint" style="margin-bottom:14px">${qty(it.qty, it.unit === 'kg' ? 'kg' : 'dona')} × ${sum(it.price)} = <b>${sum(lineSum(it))}</b>${isNew ? '' : ` · oshxonaga ${time(it.sent_at)} da yuborilgan`}</p>
       <div class="actions">${isNew ? `<button class="btn" data-a="qty">${icon('edit')}Miqdor</button><button class="btn" data-a="note">${icon('note')}Izoh</button>
+        ${it.product_id && modsOf(it.product_id).length ? `<button class="btn" data-a="mods">${icon('plus')}Qo'shimchalar</button>` : ''}
         <button class="btn danger" data-a="remove">${icon('trash')}O'chirish</button>`
       : `<button class="btn danger" data-a="cancel">${icon('x')}Bekor qilish</button><button class="btn" data-a="again">${icon('plus')}Yana shundan</button>`}</div>`,
     onOpen: (m, close) => m.querySelectorAll('[data-a]').forEach((b) => b.onclick = () => close(b.dataset.a)),
@@ -377,6 +419,10 @@ async function lineMenu(id) {
     } else if (act === 'note') {
       const c = await commentBox(it.comment, 'Taomga izoh');
       if (c != null) dispatch('comment', { item_id: it.id, comment: c }, o.id);
+    } else if (act === 'mods') {
+      const p = products().find((x) => x.id === it.product_id);
+      const r = p && await modPicker({ ...p, price: it.base ?? p.price }, { current: it.mods || [] });
+      if (r) dispatch('mods', { item_id: it.id, mods: r.mods }, o.id);
     } else if (act === 'remove') dispatch('remove', { item_id: it.id }, o.id);
     else if (act === 'again') { const p = products().find((x) => x.id === it.product_id); if (p) await addProduct(p); }
     else if (act === 'cancel') await cancelLine(o, it);
@@ -1170,6 +1216,10 @@ document.addEventListener('click', async (e) => {
   if (d.p) {
     const p = S.boot.products.find((x) => x.id === Number(d.p)); if (!p) return;
     const n = Number(ui.buf) || 0; ui.buf = '';
+    if (modsOf(p.id).length && !(S.stop.has(p.id) || p.stop)) {
+      const r = await modPicker(p, { qty: n && p.unit !== 'kg' ? n : 1 }); if (!r) return renderTicket();
+      return addProduct(p, { qty: p.unit === 'kg' ? undefined : r.qty, mods: r.mods });
+    }
     addProduct(p, n && p.unit !== 'kg' ? { qty: n } : {}); return;
   }
   if (d.k) return padKey(d.k);

@@ -12,7 +12,7 @@ export const TENANT_TABLES = [
   'users', 'devices', 'settings', 'halls', 'tables', 'stations', 'categories', 'products',
   'orders', 'order_items', 'payments', 'ops', 'shifts', 'cash_moves', 'login_attempts',
   'ingredients', 'recipes', 'stock_moves', 'stock_docs', 'suppliers', 'supplier_moves',
-  'customers', 'debt_moves', 'expenses', 'notes', 'bot_events',
+  'customers', 'debt_moves', 'expenses', 'notes', 'bot_events', 'mod_groups', 'modifiers', 'product_mods',
 ];
 
 /** Kassaga yuborilmaydigan maxfiy sozlamalar (boot javobidan va sozlamalar ro'yxatidan chiqariladi). */
@@ -147,6 +147,22 @@ export const SCHEMA = [
     sent_at TIMESTAMPTZ, tries INTEGER NOT NULL DEFAULT 0, error TEXT)`,
   `CREATE TABLE IF NOT EXISTS login_attempts (
     company_id INTEGER NOT NULL, key TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  // ---- Qo'shimchalar (modifikatorlar): pishloq +5 000, sous tanlash, piyozsiz ----
+  `CREATE TABLE IF NOT EXISTS mod_groups (
+    id SERIAL PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, required BOOLEAN NOT NULL DEFAULT false, multi BOOLEAN NOT NULL DEFAULT true,
+    sort INTEGER NOT NULL DEFAULT 0, active BOOLEAN NOT NULL DEFAULT true)`,
+  `CREATE TABLE IF NOT EXISTS modifiers (
+    id SERIAL PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES mod_groups(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    price BIGINT NOT NULL DEFAULT 0, cost BIGINT NOT NULL DEFAULT 0,
+    ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE SET NULL, ingredient_qty DOUBLE PRECISION NOT NULL DEFAULT 0,
+    sort INTEGER NOT NULL DEFAULT 0, active BOOLEAN NOT NULL DEFAULT true)`,
+  `CREATE TABLE IF NOT EXISTS product_mods (
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES mod_groups(id) ON DELETE CASCADE, PRIMARY KEY (product_id, group_id))`,
+  `ALTER TABLE order_items ADD COLUMN IF NOT EXISTS mods TEXT`,
   // Sotuv paytidagi 1 dona tannarxi (foyda hisoboti uchun; noma'lum bo'lsa NULL)
   `ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cost BIGINT`,
   `CREATE INDEX IF NOT EXISTS idx_orders_open ON orders (company_id, status)`,

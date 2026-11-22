@@ -22,7 +22,7 @@ const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
   ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
   ['stock', 'box', 'Ombor', [['stock', 'Masalliqlar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['today', 'Bugungi harakat']]],
-  ['menu', 'list', 'Menyu', [['menu', 'Taomlar va texkarta'], ['cats', 'Toifalar va sexlar']]],
+  ['menu', 'list', 'Menyu', [['menu', 'Taomlar va texkarta'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
   ['money', 'wallet', 'Pul', [['expenses', 'Rasxod'], ['debts', 'Nasiya'], ['suppliers', 'Yetkazib beruvchilar']]],
   ['set', 'gear', 'Sozlamalar', [['settings', 'Restoran, bot, parol'], ['staff', 'Xodimlar'], ['halls', 'Zal va stollar']]],
 ];
@@ -715,6 +715,84 @@ function shrinkImage(file) {
     img.src = URL.createObjectURL(file);
   });
 }
+
+PAGES.mods = async (m) => {
+  const d = await S('/api/admin/mods');
+  const menu = await S('/api/admin/menu');
+  const ings = (await S('/api/stock/ingredients')).ingredients.map((i) => ({ id: i.id, name: i.name, unit: i.unit, hint: UNIT[i.unit] }));
+  const pname = Object.fromEntries(menu.products.map((x) => [x.id, x.name]));
+  m.innerHTML = head('Qo\'shimchalar', 'Taom bosilganda kassada chiqadigan tanlov: pishloq +5 000, qo\'shimcha kotlet, sous tanlash, piyozsiz. Masalliq ko\'rsatilsa — sotilganda ombordan o\'zi yechiladi.',
+    `<button class="btn primary" id="addG">${icon('plus')}Guruh</button>`)
+    + (d.groups.length ? `<div class="card"><table class="tbl"><thead><tr><th>Guruh</th><th>Qo'shimchalar</th><th>Qaysi taomlarda</th><th>Tanlov</th></tr></thead><tbody>
+      ${d.groups.map((g) => `<tr class="click" data-g="${g.id}"><td><b>${esc(g.name)}</b></td>
+        <td>${g.mods.map((x) => `${esc(x.name)}${x.price ? ` <span class="dim">+${sum(x.price)}</span>` : ' <span class="dim">bepul</span>'}`).join(', ')}</td>
+        <td>${g.product_ids.length ? `${g.product_ids.length} ta: <span class="dim">${esc(g.product_ids.slice(0, 3).map((id) => pname[id]).filter(Boolean).join(', '))}${g.product_ids.length > 3 ? '…' : ''}</span>` : '<span class="badge bad">taom tanlanmagan</span>'}</td>
+        <td>${g.required ? '<span class="badge">majburiy</span> ' : ''}${g.multi ? 'bir nechta' : 'bittasi'}</td></tr>`).join('')}</tbody></table></div>`
+    : `<div class="card"><div class="empty" style="padding:34px 20px">${icon('plus')}<div style="font-size:17px;font-weight:600;margin-top:6px">Hali qo'shimcha yo'q</div>
+        <p class="hint" style="max-width:520px;margin:8px auto 14px">Masalan: «Qo'shimchalar» guruhi — Pishloq +5 000, Kotlet +15 000, Piyozsiz (bepul) — burgerlarga.
+        «Sous» guruhi — Sirniy, Chesnochniy, Ketchup (majburiy, bittasi) — setlarga.</p><button class="btn primary" id="addG2">${icon('plus')}Birinchi guruhni qo'shish</button></div></div>`);
+  const form = async (g) => {
+    const row = (x = {}) => `<div class="ln" data-mid="${x.id || ''}"><input class="input" data-mn placeholder="Pishloq" value="${esc(x.name || '')}">
+      <div class="unitbox"><input class="input" data-mp inputmode="numeric" placeholder="0" value="${x.price ? sum(x.price) : ''}"><span>so'm</span></div>
+      ${picker(ings, x.ingredient_id, 'Masalliq (ixtiyoriy)')}
+      <div class="unitbox"><input class="input" data-mq inputmode="decimal" placeholder="—" value="${x.ingredient_qty ? String(x.ingredient_qty).replace('.', ',') : ''}"><span data-mu>${esc(UNIT[ings.find((i) => i.id === x.ingredient_id)?.unit] || '')}</span></div>
+      <button class="icon-btn" data-drop aria-label="Ro'yxatdan chiqarish">${icon('x')}</button></div>`;
+    const sel = new Set(g?.product_ids || []);
+    const r = await openModal({
+      title: g ? 'Qo\'shimcha guruhi' : 'Yangi qo\'shimcha guruhi', size: 'wide',
+      body: `<div class="grid2"><div class="field"><label>Guruh nomi</label><input class="input" data-gn value="${esc(g?.name || '')}" placeholder="Qo'shimchalar, Sous, Non turi…" autofocus></div>
+          <div class="field"><label>Tanlov</label><div class="row" style="gap:16px;flex-wrap:wrap;margin-top:8px">
+            <label class="chk"><input type="checkbox" data-req ${g?.required ? 'checked' : ''}> Majburiy (kassir tanlamasdan qo'sha olmaydi)</label>
+            <label class="chk"><input type="checkbox" data-multi ${g ? (g.multi ? 'checked' : '') : 'checked'}> Bir nechtasini tanlash mumkin</label></div></div></div>
+        <h3 style="font-size:15px;margin:6px 0 8px">Qo'shimchalar</h3>
+        <div class="lines mods"><div class="ln h"><span>Nomi</span><span>Narxiga qo'shiladi</span><span>Ombordan yechiladi</span><span>Miqdori (1 taomga)</span><span></span></div>
+          <div data-rows>${(g?.mods?.length ? g.mods : [{}, {}]).map(row).join('')}</div></div>
+        <button class="btn sm" data-addm>${icon('plus')}Qo'shimcha</button>
+        <h3 style="font-size:15px;margin:18px 0 8px">Qaysi taomlarda chiqadi</h3>
+        <div class="pchk">${menu.categories.map((c) => { const ps = menu.products.filter((x) => x.category_id === c.id); if (!ps.length) return '';
+          return `<div class="pc"><label class="chk b"><input type="checkbox" data-allc="${c.id}"> ${esc(c.name)}</label>
+            <div class="pl">${ps.map((x) => `<label class="chk"><input type="checkbox" data-pid="${x.id}" data-cat="${c.id}" ${sel.has(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join('')}</div></div>`; }).join('')}</div>`,
+      foot: `${g ? `<button class="btn danger" data-del>O'chirish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>Saqlash</button>`,
+      onOpen: (mm, close) => {
+        const rows = mm.querySelector('[data-rows]');
+        const bind = () => {
+          bindPickers(rows, ings, (pk, x) => { pk.closest('.ln').querySelector('[data-mu]').textContent = UNIT[x.unit] || ''; }, async (name, unit) => { const x = await createIngredient(name, unit); x.hint = UNIT[unit]; return x; });
+          $$('[data-drop]', rows).forEach((b) => b.onclick = () => { b.closest('.ln').outerHTML = ''; });
+          $$('[data-mp]', rows).forEach((i) => { if (!i.dataset.mb) { i.dataset.mb = 1; moneyInput(i); } });
+        };
+        bind();
+        mm.querySelector('[data-addm]').onclick = () => { rows.insertAdjacentHTML('beforeend', row()); bind(); rows.lastElementChild.querySelector('[data-mn]').focus(); };
+        const syncAll = () => $$('[data-allc]', mm).forEach((a) => { const xs = $$(`[data-cat="${a.dataset.allc}"]`, mm); a.checked = xs.length && xs.every((x) => x.checked); });
+        $$('[data-allc]', mm).forEach((a) => a.onchange = () => { $$(`[data-cat="${a.dataset.allc}"]`, mm).forEach((x) => { x.checked = a.checked; }); });
+        $$('[data-pid]', mm).forEach((x) => x.onchange = syncAll); syncAll();
+        mm.querySelector('[data-del]')?.addEventListener('click', () => close({ del: true }));
+        mm.querySelector('[data-ok]').onclick = () => {
+          const name = mm.querySelector('[data-gn]').value.trim();
+          if (!name) { toast('Guruh nomini yozing', 'bad'); mm.querySelector('[data-gn]').focus(); return; }
+          const mods = [];
+          for (const ln of $$('.ln[data-mid]', rows)) {
+            const n = ln.querySelector('[data-mn]').value.trim(); if (!n) continue;
+            const iid = Number(ln.querySelector('[data-pkq]').dataset.id) || null;
+            const q = numVal(ln.querySelector('[data-mq]'));
+            if (iid && !(q > 0)) { toast(`«${n}» — masalliq miqdorini yozing (masalan 0,02 kg)`, 'bad'); ln.querySelector('[data-mq]').focus(); return; }
+            mods.push({ id: Number(ln.dataset.mid) || null, name: n, price: moneyVal(ln.querySelector('[data-mp]')) || 0, ingredient_id: iid, ingredient_qty: iid ? q : 0 });
+          }
+          if (!mods.length) { toast('Kamida bitta qo\'shimcha yozing', 'bad'); return; }
+          const product_ids = $$('[data-pid]', mm).filter((x) => x.checked).map((x) => Number(x.dataset.pid));
+          close({ name, required: mm.querySelector('[data-req]').checked, multi: mm.querySelector('[data-multi]').checked, mods, product_ids });
+        };
+      },
+    });
+    if (!r) return;
+    try {
+      if (r.del) { if (!(await confirmBox(`«${g.name}» guruhi o'chirilsinmi? Kassada boshqa chiqmaydi.`, { danger: true, ok: 'O\'chirish' }))) return; await P('/api/admin/modgroup/remove', { id: g.id }); }
+      else await P('/api/admin/modgroup', { id: g?.id, sort: g?.sort ?? d.groups.length, ...r });
+      toast('Saqlandi — kassa 1-2 daqiqada yangilanadi', 'ok'); show('mods');
+    } catch (e) { fail(e); }
+  };
+  $('#addG').onclick = () => form(); $('#addG2')?.addEventListener('click', () => form());
+  $$('[data-g]', m).forEach((r) => r.onclick = () => form(d.groups.find((g) => g.id === Number(r.dataset.g))));
+};
 
 PAGES.cats = async (m) => {
   const d = await S('/api/admin/menu');

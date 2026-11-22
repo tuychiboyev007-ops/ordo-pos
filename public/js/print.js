@@ -46,12 +46,13 @@ function lines(o) {
   const g = new Map();
   for (const it of o.items) {
     if (it.status === 'cancelled') continue;
-    const k = `${it.product_id}|${it.price}|${it.comment || ''}|${it.unit}`;
+    const k = `${it.product_id}|${it.price}|${it.comment || ''}|${it.unit}|${(it.mods || []).map((m) => m.name).join(',')}`;
     const x = g.get(k) || { ...it, qty: 0 };
     x.qty = Math.round((x.qty + it.qty) * 1000) / 1000;
     g.set(k, x);
   }
   return [...g.values()].map((it) => `<div class="it"><div class="n">${esc(it.name)}</div>
+    ${(it.mods || []).map((m) => `<div class="cm">  ${m.price ? '+ ' : ''}${esc(m.name)}${m.price ? ' ' + sum(m.price) : ''}</div>`).join('')}
     <div class="r"><span>${qty(it.qty, it.unit === 'kg' ? 'kg' : '')} x ${sum(it.price)}</span><span>${sum(lineSum(it))}</span></div>
     ${it.comment ? `<div class="cm">${esc(it.comment)}</div>` : ''}</div>`).join('');
 }
@@ -82,6 +83,7 @@ export function kitchenHTML(o, items, station, ctx) {
     <div class="r big"><span>№ ${esc(o.number ?? '')}</span><span>${o.table_id ? 'Stol ' + esc(ctx.tableName(o.table_id)) : esc(TYPE_NAMES[o.type] || '')}</span></div>
     <div class="r sm"><span>${esc(ctx.staffName(o.waiter_id) || '')}</span><span>${time(new Date())}</span></div><div class="hr"></div>
     ${items.map((it) => `<div class="it"><div class="r big"><span>${esc(it.name)}</span><span>${qty(it.qty, it.unit === 'kg' ? 'kg' : '')}</span></div>
+      ${(it.mods || []).map((m) => `<div class="cm big">${m.price ? '+ ' : ''}${esc(m.name)}</div>`).join('')}
       ${it.comment ? `<div class="cm big">! ${esc(it.comment)}</div>` : ''}</div>`).join('')}`, ctx.paper);
 }
 

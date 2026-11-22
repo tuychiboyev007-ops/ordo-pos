@@ -433,6 +433,53 @@ group('Tekshiruvda topilgan xatolar qaytmasin');
   await sync([op('shift.close', { shift_id: S6, counted: 0 })]);
 }
 
+group('Qo\'shimchalar: narx, ombor, tannarx');
+{
+  const chz = await mk('Pishloq slays', 'kg');
+  await call('POST', '/api/stock/doc', { kind: 'kirim', lines: [{ ingredient_id: chz, qty: 2, price: 80000 }] }, SES);
+  let r = await call('POST', '/api/admin/modgroup', { name: 'Qo\'shimchalar', required: false, multi: true, mods: [
+    { name: 'Pishloq', price: 5000, ingredient_id: chz, ingredient_qty: '0,03' }, { name: 'Piyozsiz', price: 0 }, { name: '' }], product_ids: [burger, 999999] }, SES);
+  ok(r.ok, 'qo\'shimcha guruhi saqlandi', r);
+  const G = r.id;
+  r = await call('POST', '/api/admin/modgroup', { name: 'Bo\'sh', mods: [] }, SES);
+  ok(r.status === 400, 'qo\'shimchasiz guruh rad etiladi');
+  let boot = await call('GET', '/api/boot', null, DEV);
+  const g = boot.modgroups.find((x) => x.id === G);
+  ok(g && g.mods.length === 2 && g.product_ids.length === 1 && g.product_ids[0] === burger, 'kassa guruhni oladi (bo\'sh nom va begona taom tashlandi)', g);
+  const PIS = g.mods.find((x) => x.name === 'Pishloq'); const PIY = g.mods.find((x) => x.name === 'Piyozsiz');
+  const SM = id('s'); await sync([op('shift.open', { shift_id: SM, cash: 0 })]);
+  const M = id('o'); const mi = id('i');
+  r = await sync([op('open', { type: 'olib', number: 61, shift_id: SM }, M),
+    op('add', { item: { id: mi, product_id: burger, name: 'Burger', base: 32000, price: 37000, qty: 2, unit: 'dona', mods: [{ id: PIS.id, name: 'Pishloq', price: 5000 }] } }, M)]);
+  let it = r.orders[0].items[0];
+  ok(it.price === 37000 && it.base === 32000 && it.mods.length === 1, 'qo\'shimcha narxga qo\'shildi: 32 000 + 5 000', it);
+  r = await sync([op('mods', { item_id: mi, mods: [{ id: PIY.id, name: 'Piyozsiz', price: 0 }] }, M)]);
+  ok(r.orders[0].items[0].price === 32000, 'qo\'shimcha almashtirildi — narx qaytdi', r.orders[0].items[0]);
+  r = await sync([op('mods', { item_id: mi, mods: [{ id: PIS.id, name: 'Pishloq', price: 5000 }, { id: PIY.id, name: 'Piyozsiz', price: -100 }] }, M)]);
+  it = r.orders[0].items[0];
+  ok(it.price === 37000 && it.mods[1].price === 0, 'manfiy narx qabul qilinmaydi', it);
+  const stockBefore = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === chz).stock;
+  r = await sync([op('send', {}, M), op('mods', { item_id: mi, mods: [] }, M)]);
+  ok(r.results[1].error === 'sent', 'oshxonaga ketgan taomning qo\'shimchasi o\'zgarmaydi');
+  r = await sync([op('pay', { payment: { id: id('y'), method: 'naqd', amount: 74000 } }, M), op('close', { shift_id: SM }, M)]);
+  ok(r.results.every((x) => x.ok) && r.orders[0].status === 'closed', 'qo\'shimchali buyurtma yopildi', r.results);
+  const after = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === chz).stock;
+  ok(Math.abs(stockBefore - after - 0.06) < 1e-9, 'pishloq ombordan yechildi: 2 × 30 g', [stockBefore, after]);
+  const row = await db.first('SELECT mods, cost FROM order_items WHERE company_id = (SELECT company_id FROM orders WHERE id = ? /* tenant:global */) AND id = ?', M, mi);
+  const burgerCost = (await call('GET', '/api/stock/recipe-costs', null, SES)).costs?.[burger];
+  ok(row.mods === 'Pishloq, Piyozsiz', 'hisobotda qo\'shimcha nomlari', row);
+  ok(Number(row.cost) >= 0.03 * 80000, 'tannarxga pishloq qo\'shildi', [row.cost, burgerCost?.cost]);
+  // Ro'yxatdan olib tashlangan qo'shimcha kassada chiqmaydi
+  r = await call('POST', '/api/admin/modgroup', { id: G, name: 'Qo\'shimchalar', mods: [{ id: PIS.id, name: 'Pishloq', price: 6000, ingredient_id: chz, ingredient_qty: 0.03 }], product_ids: [burger] }, SES);
+  boot = await call('GET', '/api/boot', null, DEV);
+  const g2 = boot.modgroups.find((x) => x.id === G);
+  ok(g2.mods.length === 1 && g2.mods[0].price === 6000, 'olib tashlangani yashirindi, narx yangilandi', g2.mods);
+  r = await call('POST', '/api/admin/modgroup/remove', { id: G }, SES);
+  boot = await call('GET', '/api/boot', null, DEV);
+  ok(r.ok && !boot.modgroups.some((x) => x.id === G), 'guruh o\'chirildi');
+  await sync([op('shift.close', { shift_id: SM, counted: 74000 })]);
+}
+
 group('Restoranlar aralashmaydi');
 await call('POST', '/api/setup', { name: 'Boshqa kafe', email: 'b@t.uz', password: 'parol12345', pin: '1111' });
 const DEV2 = (await call('POST', '/api/device/login', { email: 'b@t.uz', password: 'parol12345' })).token;

@@ -101,5 +101,17 @@ export async function boot(req, env, db, auth) {
     CASE WHEN image LIKE '/%' THEN image WHEN image IS NOT NULL THEN 'db' END AS image FROM products
     WHERE company_id = ? AND active = true ORDER BY sort, name`, c)).map((p) => ({ ...p, price: Number(p.price), image: imageUrl(c, p) }));
   const staff = await db.all('SELECT id, name, role, color, pin_salt, pin_hash FROM users WHERE company_id = ? AND active = true AND pin_hash IS NOT NULL ORDER BY role, name', c);
-  return json({ ok: true, company, settings, stations, halls, tables, categories, products, staff, device_id: auth.d });
+  const modgroups = await modGroups(db, c);
+  return json({ ok: true, company, settings, stations, halls, tables, categories, products, staff, modgroups, device_id: auth.d });
+}
+
+/** Qo'shimcha guruhlari (faol), ichidagi qo'shimchalar va qaysi taomlarga tegishli. */
+export async function modGroups(db, c, { full = false } = {}) {
+  const groups = await db.all('SELECT id, name, required, multi, sort FROM mod_groups WHERE company_id = ? AND active = true ORDER BY sort, id', c);
+  if (!groups.length) return [];
+  const mods = await db.all(`SELECT id, group_id, name, price::float8 AS price${full ? ', cost::float8 AS cost, ingredient_id, ingredient_qty::float8 AS ingredient_qty' : ''}
+    FROM modifiers WHERE company_id = ? AND active = true ORDER BY sort, id`, c);
+  const links = await db.all('SELECT product_id, group_id FROM product_mods WHERE company_id = ?', c);
+  return groups.map((g) => ({ ...g, mods: mods.filter((m) => m.group_id === g.id).map(({ group_id, ...m }) => m),
+    product_ids: links.filter((l) => l.group_id === g.id).map((l) => l.product_id) }));
 }

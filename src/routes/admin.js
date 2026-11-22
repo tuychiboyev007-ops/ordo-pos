@@ -7,7 +7,7 @@ import { SECRET_SETTINGS } from '../lib/schema.js';
 import { json, fail, body, str, int, bool } from '../lib/http.js';
 import { makePin, validPin, hashPassword } from '../lib/auth.js';
 import { ROLES } from '../../public/js/core.js';
-import { imageUrl } from './auth.js';
+import { imageUrl, modGroups } from './auth.js';
 
 const SETTING_KEYS = ['name', 'address', 'phone', 'receipt_header', 'receipt_footer', 'paper', 'service_pct', 'tin',
   'agent_url', 'receipt_printer', 'precheck_note', 'round_to'];
@@ -211,4 +211,60 @@ export async function revokeDevice(req, env, db, auth) {
   if (int(b.id) === auth.d) return fail(409, 'self', 'Hozirgi qurilmani o\'chirib bo\'lmaydi');
   const r = await db.all('UPDATE devices SET revoked = true WHERE company_id = ? AND id = ? RETURNING id', auth.c, int(b.id));
   return r.length ? json({ ok: true }) : fail(404, 'not_found');
+}
+
+
+// =================== Qo'shimchalar ===================
+export async function mods(req, env, db, auth) {
+  return json({ ok: true, groups: await modGroups(db, auth.c, { full: true }) });
+}
+
+/** Guruh to'liq saqlanadi: nomi, majburiyligi, qo'shimchalar ro'yxati va qaysi taomlarga tegishli. */
+export async function saveModGroup(req, env, db, auth) {
+  const b = await body(req); const c = auth.c; const id = int(b.id, 0);
+  const name = str(b.name, 60); if (!name) return fail(400, 'need_name', 'Guruh nomi kerak');
+  const list = (Array.isArray(b.mods) ? b.mods : []).slice(0, 40).map((m, i) => ({
+    id: int(m.id, 0), name: str(m.name, 60), price: Math.max(0, int(m.price)), cost: Math.max(0, int(m.cost)),
+    ingredient_id: int(m.ingredient_id, 0) || null, ingredient_qty: Math.max(0, Number(String(m.ingredient_qty ?? '').replace(',', '.')) || 0), sort: i,
+  })).filter((m) => m.name);
+  if (!list.length) return fail(400, 'need_mods', 'Kamida bitta qo\'shimcha yozing');
+  const ings = new Set((await db.all('SELECT id FROM ingredients WHERE company_id = ? AND active = true', c)).map((r) => r.id));
+  for (const m of list) if (m.ingredient_id && !ings.has(m.ingredient_id)) m.ingredient_id = null;
+  const prods = new Set((await db.all('SELECT id FROM products WHERE company_id = ? AND active = true', c)).map((r) => r.id));
+  const pids = [...new Set((Array.isArray(b.product_ids) ? b.product_ids : []).map((x) => int(x, 0)).filter((x) => prods.has(x)))];
+  if (id && !(await own(db, 'mod_groups', c, id))) return fail(404, 'not_found');
+  const gid = await db.tx(async (tx) => {
+    let g = id;
+    if (id) {
+      await tx.run('UPDATE mod_groups SET name = ?, required = ?, multi = ?, sort = ? WHERE company_id = ? AND id = ?', name, bool(b.required), b.multi === false ? false : true, int(b.sort), c, id);
+    } else {
+      g = (await tx.first('INSERT INTO mod_groups (company_id, name, required, multi, sort) VALUES (?, ?, ?, ?, ?) RETURNING id', c, name, bool(b.required), b.multi === false ? false : true, int(b.sort))).id;
+    }
+    const keep = [];
+    for (const m of list) {
+      const ex = m.id ? await tx.first('SELECT id FROM modifiers WHERE company_id = ? AND group_id = ? AND id = ?', c, g, m.id) : null;
+      if (ex) {
+        await tx.run('UPDATE modifiers SET name = ?, price = ?, cost = ?, ingredient_id = ?, ingredient_qty = ?, sort = ?, active = true WHERE company_id = ? AND id = ?',
+          m.name, m.price, m.cost, m.ingredient_id, m.ingredient_qty, m.sort, c, ex.id);
+        keep.push(ex.id);
+      } else {
+        keep.push((await tx.first('INSERT INTO modifiers (company_id, group_id, name, price, cost, ingredient_id, ingredient_qty, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+          c, g, m.name, m.price, m.cost, m.ingredient_id, m.ingredient_qty, m.sort)).id);
+      }
+    }
+    // Ro'yxatdan olib tashlangan qo'shimcha o'chirilmaydi — eski buyurtmalar unga tayanadi.
+    await tx.run(`UPDATE modifiers SET active = false WHERE company_id = ? AND group_id = ? AND id NOT IN (${keep.map(() => '?').join(',')})`, c, g, ...keep);
+    await tx.run('DELETE FROM product_mods WHERE company_id = ? AND group_id = ?', c, g);
+    for (const p of pids) await tx.run('INSERT INTO product_mods (company_id, product_id, group_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', c, p, g);
+    return g;
+  });
+  return json({ ok: true, id: gid });
+}
+
+export async function removeModGroup(req, env, db, auth) {
+  const b = await body(req);
+  const r = await db.all('UPDATE mod_groups SET active = false WHERE company_id = ? AND id = ? RETURNING id', auth.c, int(b.id));
+  if (!r.length) return fail(404, 'not_found');
+  await db.run('DELETE FROM product_mods WHERE company_id = ? AND group_id = ?', auth.c, int(b.id));
+  return json({ ok: true });
 }

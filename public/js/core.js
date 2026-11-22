@@ -43,6 +43,10 @@ export class OpError extends Error {
 export const money = (n) => Math.round(Number(n) || 0);
 export const qty3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
 export const lineSum = (it) => money(it.price * it.qty);
+/** Qo'shimchalar (pishloq, sous...) — 1 dona uchun; taom narxiga qo'shiladi. */
+export const modSum = (mods) => (mods || []).reduce((s, m) => s + money(m.price), 0);
+export const modsText = (it) => (it.mods || []).map((m) => (m.price ? '+ ' : '') + m.name).join(', ');
+export const modsKey = (mods) => (mods || []).map((m) => m.id ?? m.name).sort().join(',');
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 export function newOrder(id) {
@@ -96,6 +100,12 @@ function item(o, id) {
 
 function cleanText(v, max = 200) { return String(v ?? '').trim().slice(0, max); }
 
+function cleanMods(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 12).map((m) => ({ id: Number.isInteger(m?.id) ? m.id : null, name: cleanText(m?.name, 60), price: Math.max(0, money(m?.price)) }))
+    .filter((m) => m.name);
+}
+
 /** Tashqi manba (Telegram bot) ma'lumoti: faqat shu maydonlar saqlanadi. */
 function cleanExt(e) {
   if (!e || typeof e !== 'object' || e.source !== 'telegram') return null;
@@ -148,13 +158,15 @@ export function applyOp(order, op, ctx) {
       if (!it.id) throw new OpError('bad_item', 'Taom id si yo\'q');
       if (o.items.some((i) => i.id === it.id)) return o;
       const q = qty3(it.qty);
-      const price = money(it.price);
+      const mods = cleanMods(it.mods);
+      // base — taomning o'z narxi; price — qo'shimchalar bilan 1 dona narxi.
+      const base = it.base != null ? money(it.base) : money(it.price) - modSum(mods);
       if (!(q > 0)) throw new OpError('bad_qty', 'Miqdor noto\'g\'ri');
-      if (price < 0) throw new OpError('bad_price', 'Narx noto\'g\'ri');
+      if (base < 0) throw new OpError('bad_price', 'Narx noto\'g\'ri');
       o.items.push({
-        id: it.id, product_id: it.product_id ?? null, name: cleanText(it.name, 120), price, qty: q,
+        id: it.id, product_id: it.product_id ?? null, name: cleanText(it.name, 120), price: base + modSum(mods), qty: q,
         unit: it.unit === 'kg' ? 'kg' : 'dona', station_id: it.station_id ?? null, comment: cleanText(it.comment),
-        status: 'new', added_at: at, added_by: op.by, sent_at: null,
+        status: 'new', added_at: at, added_by: op.by, sent_at: null, ...(mods.length ? { base, mods } : {}),
       });
       o.precheck_at = null;
       break;
@@ -172,6 +184,15 @@ export function applyOp(order, op, ctx) {
       const it = item(o, d.item_id);
       if (it.status !== 'new') throw new OpError('sent', 'Oshxonaga yuborilgan taom o\'chmaydi — bekor qiling');
       o.items = o.items.filter((i) => i.id !== it.id);
+      o.precheck_at = null;
+      break;
+    }
+    case 'mods': {
+      const it = item(o, d.item_id);
+      if (it.status !== 'new') throw new OpError('sent', 'Oshxonaga yuborilgan taomning qo\'shimchasi o\'zgarmaydi');
+      const mods = cleanMods(d.mods);
+      const base = it.base != null ? it.base : it.price - modSum(it.mods);
+      it.base = base; it.mods = mods; it.price = base + modSum(mods);
       o.precheck_at = null;
       break;
     }

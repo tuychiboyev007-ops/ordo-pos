@@ -51,12 +51,13 @@ export async function moveStock(tx, company, m) {
  * items — [{ product_id, qty }]. Har (taom, masalliq) juftligi alohida harakat —
  * hisobotda "go'sht qaysi taomga ketdi" ko'rinadi.
  */
-export async function consume(tx, company, items, { kind = 'sotuv', order_id = null, doc_id = null, user_id = null, at, sign = -1 } = {}) {
+export async function consume(tx, company, items, { kind = 'sotuv', order_id = null, doc_id = null, user_id = null, at, sign = -1, extra = [] } = {}) {
   const ids = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
-  if (!ids.length) return 0;
-  const recipe = await tx.all(`SELECT product_id, ingredient_id, qty FROM recipes WHERE company_id = ? AND product_id IN (${ids.map(() => '?').join(',')})`, company, ...ids);
-  if (!recipe.length) return 0;
+  const recipe = ids.length ? await tx.all(`SELECT product_id, ingredient_id, qty FROM recipes WHERE company_id = ? AND product_id IN (${ids.map(() => '?').join(',')})`, company, ...ids) : [];
+  if (!recipe.length && !extra.length) return 0;
   const need = new Map(); // product:ingredient → qty
+  // Qo'shimchalar (pishloq...) masalligi: [{ product_id, ingredient_id, qty }]
+  for (const x of extra) { const k = `${x.product_id || 0}:${x.ingredient_id}`; need.set(k, (need.get(k) || 0) + Number(x.qty)); }
   for (const it of items) {
     for (const r of recipe) {
       if (r.product_id !== it.product_id) continue;
@@ -69,7 +70,7 @@ export async function consume(tx, company, items, { kind = 'sotuv', order_id = n
   let n = 0;
   for (const k of keys) {
     const [pid, iid] = k.split(':').map(Number);
-    await moveStock(tx, company, { ingredient_id: iid, kind, qty: sign * need.get(k), order_id, doc_id, product_id: pid, user_id, at });
+    await moveStock(tx, company, { ingredient_id: iid, kind, qty: sign * need.get(k), order_id, doc_id, product_id: pid || null, user_id, at });
     n++;
   }
   return n;

@@ -66,12 +66,21 @@ export async function finalizeOrder(tx, company, doc) {
   await tx.run('DELETE FROM order_items WHERE company_id = ? AND order_id = ?', company, doc.id);
   await tx.run('DELETE FROM payments WHERE company_id = ? AND order_id = ?', company, doc.id);
   const units = doc.items.some((i) => i.product_id) ? await unitCosts(tx, company) : new Map();
+  // Qo'shimchalar: tannarxi (masalliqdan yoki qo'lda) va ombordan yechiladigan masalliq.
+  const modIds = [...new Set(doc.items.flatMap((i) => (i.mods || []).map((m) => m.id)).filter(Number.isInteger))];
+  const modDefs = new Map((modIds.length ? await tx.all(`SELECT m.id, m.cost::float8 AS cost, m.ingredient_id, m.ingredient_qty::float8 AS iq, g.cost::float8 AS icost
+    FROM modifiers m LEFT JOIN ingredients g ON g.id = m.ingredient_id AND g.company_id = m.company_id
+    WHERE m.company_id = ? AND m.id IN (${modIds.map(() => '?').join(',')})`, company, ...modIds) : []).map((r) => [r.id, r]));
+  const modCost = (m) => { const d = modDefs.get(m.id); if (!d) return 0; return d.ingredient_id && d.iq > 0 ? Math.round(d.iq * (Number(d.icost) || 0)) : Math.round(Number(d.cost) || 0); };
   for (const it of doc.items) {
-    const uc = it.product_id ? units.get(it.product_id)?.cost || null : null;
+    let uc = it.product_id ? units.get(it.product_id)?.cost || null : null;
+    const mc = (it.mods || []).reduce((s, m) => s + modCost(m), 0);
+    if (mc) uc = (uc || 0) + mc;
     await tx.run(`INSERT INTO order_items (company_id, id, order_id, product_id, name, price, qty, sum, unit, station_id, status,
-      sent_at, cancel_reason, cancelled_by, added_by, closed_at, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sent_at, cancel_reason, cancelled_by, added_by, closed_at, cost, mods) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     company, it.id, doc.id, it.product_id, it.name, it.price, it.qty, money(it.price * it.qty), it.unit, it.station_id,
-    it.status, it.sent_at, it.cancel_reason || null, it.cancelled_by || null, it.added_by || null, doc.closed_at, uc);
+    it.status, it.sent_at, it.cancel_reason || null, it.cancelled_by || null, it.added_by || null, doc.closed_at, uc,
+    it.mods?.length ? it.mods.map((m) => m.name).join(', ') : null);
   }
   if (doc.status !== 'closed') return;
   for (const p of doc.payments) {
@@ -90,7 +99,12 @@ export async function finalizeOrder(tx, company, doc) {
     }
   }
   const live = doc.items.filter((i) => i.status !== 'cancelled' && i.product_id);
-  await consume(tx, company, live.map((i) => ({ product_id: i.product_id, qty: i.qty })), { order_id: doc.id, user_id: doc.closed_by, at: doc.closed_at });
+  const extra = [];
+  for (const it of doc.items) {
+    if (it.status === 'cancelled') continue;
+    for (const m of it.mods || []) { const d = modDefs.get(m.id); if (d?.ingredient_id && d.iq > 0) extra.push({ product_id: it.product_id, ingredient_id: d.ingredient_id, qty: d.iq * it.qty }); }
+  }
+  await consume(tx, company, live.map((i) => ({ product_id: i.product_id, qty: i.qty })), { order_id: doc.id, user_id: doc.closed_by, at: doc.closed_at, extra });
 }
 
 async function openShift(tx, company) {
