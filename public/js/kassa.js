@@ -12,7 +12,7 @@ import { receiptHTML, kitchenHTML, cancelHTML, zReportHTML, print, printCfg, set
 
 if (!deviceToken()) location.replace('/?qurilma=1');
 
-const ui = { view: 'zal', hall: null, order: null, draft: null, cat: null, search: '', back: 'zal' };
+const ui = { view: 'zal', hall: null, order: null, draft: null, cat: null, search: '', back: 'zal', sel: null, buf: '' };
 const QUICK_NOTES = ['Piyozsiz', 'Achchiqroq', 'Achchiq emas', 'Tuzsiz', 'Tezroq', 'Olib ketish uchun', 'Muzsiz', 'Shakarsiz', 'Yaxshi pishgan'];
 const CANCEL_REASONS = ['Mijoz voz kechdi', 'Xato kiritilgan', 'Uzoq kutdi', 'Taom sifatsiz', 'Tugab qoldi'];
 const DISCOUNT_REASONS = ['Doimiy mijoz', 'Tug\'ilgan kun', 'Xodim', 'Kechikish uchun', 'Aksiya'];
@@ -176,11 +176,13 @@ function current() { return ui.order ? order(ui.order) : null; }
 function viewOrder(v) {
   const list = cats();
   if (!ui.cat || (ui.cat !== 'all' && !list.some((c) => c.id === ui.cat))) ui.cat = list[0]?.id || 'all';
+  ui.buf = ''; ui.sel = null;
   v.innerHTML = `<div class="pos">
-    <aside class="cats" id="cats"><div class="h">Menyu</div>${list.map((c) => `<button data-cat="${c.id}" class="${ui.cat === c.id ? 'on' : ''}"><i style="background:${esc(c.color || '#999')}"></i><span>${esc(c.name)}</span><em>${products().filter((p) => p.category_id === c.id).length}</em></button>`).join('')}</aside>
-    <div class="prods"><div class="bar"><label class="search">${icon('search')}<input class="input" id="psearch" placeholder="Taom qidirish yoki shtrix-kod" autocomplete="off" value="${esc(ui.search)}"></label></div>
-      <div class="pgrid" id="pgrid"></div></div>
-    <aside class="ticket" id="ticket"></aside></div>`;
+    <aside class="ticket" id="ticket"></aside>
+    <section class="rpane">
+      <div class="ctabs" id="ctabs">${list.map((c) => `<button data-cat="${c.id}" class="${ui.cat === c.id ? 'on' : ''}" style="--c:${esc(c.color || '#475569')}">${esc(c.name)}</button>`).join('')}
+        <label class="csearch">${icon('search')}<input id="psearch" placeholder="Qidirish yoki shtrix-kod" autocomplete="off" value="${esc(ui.search)}"></label></div>
+      <div class="pgrid" id="pgrid"></div></section></div>`;
   $('#psearch').addEventListener('input', (e) => { ui.search = e.target.value; renderProducts(); });
   $('#psearch').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
@@ -201,9 +203,8 @@ function renderProducts() {
   const grid = $('#pgrid'); if (!grid) return;
   const color = Object.fromEntries(cats().map((c) => [c.id, c.color]));
   const list = filteredProducts();
-  grid.innerHTML = list.map((p) => `<button class="ptile ${S.stop.has(p.id) || p.stop ? 'stop' : ''}" data-p="${p.id}" style="--c:${esc(color[p.category_id] || '#999')}">
-      <span class="ph">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" draggable="false">` : `<b>${esc(initials(p.name))}</b>`}</span>
-      <span class="bd"><span class="n">${esc(p.name)}</span><span class="p"><b>${sum(p.price)}</b>${p.unit === 'kg' ? '<span class="u">1 kg</span>' : ''}</span></span></button>`).join('')
+  grid.innerHTML = list.map((p) => `<button class="ptile ${S.stop.has(p.id) || p.stop ? 'stop' : ''}" data-p="${p.id}" style="--c:${esc(color[p.category_id] || '#475569')}">
+      <span class="n">${esc(p.name)}</span><span class="p">${sum(p.price)}${p.unit === 'kg' ? '<small>/ kg</small>' : ''}</span></button>`).join('')
     || `<div class="empty" style="grid-column:1/-1">${icon('search')}<div>Hech narsa topilmadi</div></div>`;
   renderCounts();
 }
@@ -215,9 +216,12 @@ function renderCounts() {
   $$('#pgrid .ptile').forEach((b) => {
     b.querySelector('.cnt')?.remove();
     const n = cnt.get(Number(b.dataset.p));
-    if (n) b.insertAdjacentHTML('beforeend', `<span class="cnt">${n}</span>`);
+    if (n) b.insertAdjacentHTML('beforeend', `<span class="cnt">${qty(n)}</span>`);
   });
 }
+
+const PAD_KEYS = ['7', '8', '9', 'qty', '4', '5', '6', 'disc', '1', '2', '3', 'note', '0', '00', 'C', 'del'];
+const PAD_NAMES = { qty: 'Soni', disc: 'Chegirma', note: 'Izoh', del: 'O\'chirish' };
 
 function renderTicket() {
   const box = $('#ticket'); if (!box) return;
@@ -225,46 +229,72 @@ function renderTicket() {
   const base = o || d;
   if (!base) return;
   const t = o ? totals(o) : { subtotal: 0, discount: 0, service: 0, total: 0, paid: 0, due: 0, items: 0, unsent: 0 };
-  const title = base.type === 'zal' ? `Stol ${tableName(base.table_id)}` : TYPE_NAMES[base.type];
   const items = o?.items || [];
-  const fresh = items.filter((i) => i.status === 'new');
-  const sent = items.filter((i) => i.status !== 'new');
+  if (ui.sel && !items.some((i) => i.id === ui.sel)) ui.sel = null;
   const line = (it) => {
-    const isNew = it.status === 'new'; const can = it.status === 'cancelled';
+    const isNew = it.status === 'new'; const can = it.status === 'cancelled'; const on = ui.sel === it.id;
     const qlabel = it.unit === 'kg' ? qty(it.qty, 'kg') : `${qty(it.qty)}×`;
-    return `<div class="tk-line ${isNew ? 'new' : ''} ${can ? 'cancelled' : ''}" data-line="${it.id}">
+    const st = can ? `<span class="st bad">Bekor · ${esc(it.cancel_reason || '')}</span>` : isNew ? '<span class="st new">Yangi</span>' : `<span class="st">${icon('send')}${time(it.sent_at)}</span>`;
+    return `<div class="tk-line ${isNew ? 'new' : ''} ${can ? 'cancelled' : ''} ${on ? 'on' : ''}" data-line="${it.id}">
       <span class="q">${qlabel}</span><span class="nm">${esc(it.name)}</span><span class="sm">${sum(lineSum(it))}</span>
-      <span class="meta">${isNew && it.unit !== 'kg' ? `<span class="qc"><button data-dec="${it.id}" aria-label="Kamaytirish">${icon('minus')}</button><b>${qty(it.qty)}</b><button data-inc="${it.id}" aria-label="Ko'paytirish">${icon('plus')}</button></span><span class="grow"></span><span>${sum(it.price)} dan</span>`
-        : `<span>${sum(it.price)}${it.unit === 'kg' ? ' / kg' : ' dan'}</span><span class="grow"></span>${can ? `<span class="badge bad">Bekor · ${esc(it.cancel_reason || '')}</span>` : !isNew ? `<span>${icon('send')} ${time(it.sent_at)}</span>` : ''}`}</span>
-      ${it.comment ? `<span class="cm">${icon('note')}${esc(it.comment)}</span>` : ''}</div>`;
+      <span class="meta">${it.comment ? `<span class="cm">${icon('note')}${esc(it.comment)}</span>` : ''}${st}${on && isNew && it.unit !== 'kg'
+        ? `<span class="qc"><button data-dec="${it.id}" aria-label="Kamaytirish">${icon('minus')}</button><button data-inc="${it.id}" aria-label="Ko'paytirish">${icon('plus')}</button></span>` : ''}</span></div>`;
   };
-  box.innerHTML = `<div class="tk-h"><div class="t1"><h2>${esc(title)}</h2>${o ? `<span class="badge">№ ${esc(o.number ?? '')}</span>` : '<span class="badge accent">Yangi</span>'}
+  const chips = [base.type === 'zal' ? `<button data-guests>${icon('users')}${base.guests || 0} mehmon</button>` : '',
+    `<button data-waiter>${icon('user')}${esc(staffName(base.waiter_id ?? S.user?.id) || 'Ofitsiant')}</button>`,
+    base.customer ? `<button data-customer>${icon('user')}${esc(base.customer.phone || base.customer.name)}</button>` : base.type !== 'zal' ? `<button data-customer>${icon('phone')}Telefon</button>` : '',
+    base.customer?.address ? `<button data-customer class="addr">${icon('truck')}${esc(base.customer.address.slice(0, 40))}</button>` : '',
+    o?.comment ? `<button data-ocomment>${icon('note')}${esc(o.comment.slice(0, 24))}</button>` : ''].join('');
+  const sel = items.find((i) => i.id === ui.sel);
+  box.innerHTML = `<div class="tk-h">${o ? `<b>№ ${esc(o.number ?? '')}</b><span>${time(o.opened_at)} dan</span>` : '<b>Yangi buyurtma</b>'}
       <button class="icon-btn" data-omenu aria-label="Amallar">${icon('menu')}</button></div>
-    <div class="t2">${base.type === 'zal' ? `<button data-guests>${icon('users')}${base.guests || 0} mehmon</button>` : ''}
-      <button data-waiter>${icon('user')}${esc(staffName(base.waiter_id ?? S.user?.id) || 'Ofitsiant')}</button>
-      ${base.customer ? `<button data-customer>${icon('user')}${esc(base.customer.phone || base.customer.name)}</button>` : base.type !== 'zal' ? `<button data-customer>${icon('user')}Telefon</button>` : ''}
-      ${base.customer?.address ? `<button data-customer class="addr">${icon('truck')}${esc(base.customer.address.slice(0, 40))}</button>` : ''}
-      ${o ? `<button>${icon('clock')}${time(o.opened_at)}</button>` : ''}
-      ${o?.comment ? `<button data-ocomment>${icon('note')}${esc(o.comment.slice(0, 24))}</button>` : ''}</div></div>
-    <div class="tk-body">${!items.length ? `<div class="tk-empty">${icon('receipt')}<p>Menyudan taom tanlang</p></div>` : ''}
-      ${fresh.length ? `<div class="tk-sec"><span><i style="background:var(--accent)"></i>Yangi — oshxonaga yuborilmagan</span><span>${fresh.length}</span></div>${fresh.map(line).join('')}` : ''}
-      ${sent.length ? `<div class="tk-sec"><span><i style="background:var(--ok)"></i>Oshxonada</span><span>${sent.filter((i) => i.status !== 'cancelled').length}</span></div>${sent.map(line).join('')}` : ''}</div>
-    <div class="tk-sum">
-      <div class="r"><span>Taomlar</span><b>${sum(t.subtotal)}</b></div>
-      ${t.discount ? `<div class="r"><span>Chegirma${o.discount.kind === 'pct' ? ' ' + o.discount.value + '%' : ''}</span><b class="neg">−${sum(t.discount)}</b></div>` : ''}
-      ${o?.service_pct ? `<div class="r"><span>Xizmat haqi ${o.service_pct}%</span><b>${sum(t.service)}</b></div>` : ''}
-      ${t.paid ? `<div class="r"><span>To'langan</span><b class="okc">${sum(t.paid)}</b></div>` : ''}
-      <div class="tot"><span>${t.paid ? 'Qoldi' : 'Jami'}</span><b>${sum(t.paid ? t.due : t.total)}</b></div></div>
+    <div class="tk-chips">${chips}</div>
+    <div class="tk-body">${!items.length ? `<div class="tk-empty">${icon('receipt')}<p>O'ngdagi tugmalardan taom tanlang.<br><small>Avval son yozib, keyin taomni bossangiz — shuncha qo'shiladi.</small></p></div>` : ''}
+      ${items.map(line).join('')}</div>
     ${isBot(o) ? `<div class="tk-bot"><span class="badge tg">${icon('send')}Telegram bot №${esc(o.ext.number)}</span><span class="badge bst-${o.ext.status}">${esc(botStatusName(o))}</span>
       ${o.ext.pay === 'karta' ? '<span class="badge">Kartaga o\'tkazdi</span>' : ''}<span class="grow"></span>
       ${o.ext.status === 'new' ? `<button class="btn sm accent" data-bacc="${o.id}">${icon('check')}Qabul qilish</button>` : ['accepted', 'cooking'].includes(o.ext.status)
         ? `<button class="btn sm" data-bway="${o.id}">${icon(o.ext.delivery === 'pickup' ? 'check' : 'truck')}${o.ext.delivery === 'pickup' ? 'Tayyor' : 'Yo\'lga chiqdi'}</button>` : ''}</div>
       ${o.ext.status === 'cancelled' ? '<div class="tk-warn">Mijoz yoki egasi botda bekor qildi — buyurtmani bekor qiling</div>' : ''}
       ${o.ext.unmatched ? `<div class="tk-warn">${o.ext.unmatched} ta taom kassa menyusida topilmadi — nomi botdagidek yozildi, ombordan ayirilmaydi</div>` : ''}` : ''}
+    <div class="tk-sum">
+      ${t.discount ? `<div class="r"><span>Chegirma${o.discount.kind === 'pct' ? ' ' + o.discount.value + '%' : ''}</span><b class="neg">−${sum(t.discount)}</b></div>` : ''}
+      ${o?.service_pct ? `<div class="r"><span>Xizmat haqi ${o.service_pct}%</span><b>${sum(t.service)}</b></div>` : ''}
+      ${t.paid ? `<div class="r"><span>To'langan</span><b class="okc">${sum(t.paid)}</b></div>` : ''}
+      <div class="tot"><span>${t.paid ? 'Qoldi' : 'Jami'}</span><b>${sum(t.paid ? t.due : t.total)}</b></div></div>
+    <div class="tk-pad">${ui.buf ? `<div class="buf">${esc(ui.buf)} <small>${sel && sel.status === 'new' ? '— «Soni»ni bosing' : '— endi taomni bosing'}</small></div>` : ''}
+      ${PAD_KEYS.map((k) => `<button data-k="${k}" class="${PAD_NAMES[k] ? 'f' : ''} ${k === 'del' ? 'x' : ''}" ${(k === 'del' || k === 'note') && !sel && k === 'del' ? 'disabled' : ''}>${esc(PAD_NAMES[k] || k)}</button>`).join('')}</div>
     <div class="tk-act">
-      ${t.unsent ? `<button class="btn accent wide" data-send>${icon('send')}Oshxonaga yuborish · ${t.unsent}</button>` : ''}
+      <button class="btn kitchen" data-send ${!t.unsent ? 'disabled' : ''}>${icon('send')}Oshxona${t.unsent ? ` · ${t.unsent}` : ''}</button>
       <button class="btn" data-precheck ${!t.items ? 'disabled' : ''}>${icon('receipt')}Hisob</button>
-      <button class="btn primary" data-pay ${!t.items ? 'disabled' : ''}>${icon('card')}To'lov${t.items ? ` · ${sum(t.paid ? t.due : t.total)}` : ''}</button></div>`;
+      <button class="btn pay" data-pay ${!t.items ? 'disabled' : ''}>${icon('card')}TO'LOV</button></div>`;
+  box.querySelector('.tk-line.on')?.scrollIntoView({ block: 'nearest' });
+}
+
+/** Raqam tugmalari: son yozib taom bosilsa — shuncha; tanlangan satrga — Soni, Izoh, O'chirish. */
+async function padKey(k) {
+  const o = current();
+  const it = o?.items.find((i) => i.id === ui.sel);
+  if (/^\d+$/.test(k)) { ui.buf = (ui.buf + k).replace(/^0+/, '').slice(0, 4); return renderTicket(); }
+  if (k === 'C') { if (ui.buf) ui.buf = ''; else ui.sel = null; return renderTicket(); }
+  try {
+    if (k === 'qty') {
+      if (!it) { toast('Avval chekdagi taomni tanlang', 'bad'); return; }
+      if (it.status !== 'new') { toast('Oshxonaga yuborilgan — o\'zgartirish uchun «O\'chirish» (bekor qilish)', 'bad'); return; }
+      let q = Number(ui.buf) || 0; ui.buf = '';
+      if (!q) q = await numberBox({ title: 'Miqdor', value: it.unit === 'kg' ? String(it.qty).replace('.', ',') : String(it.qty), decimal: it.unit === 'kg', suffix: it.unit === 'kg' ? 'kg' : 'dona' });
+      if (q > 0) dispatch('qty', { item_id: it.id, qty: q }, o.id);
+    } else if (k === 'disc') { ui.buf = ''; if (!o) { toast('Avval taom qo\'shing', 'bad'); return; } await setDiscount(o); }
+    else if (k === 'note') {
+      if (it && it.status === 'new') { const c = await commentBox(it.comment, 'Taomga izoh'); if (c != null) dispatch('comment', { item_id: it.id, comment: c }, o.id); }
+      else if (o) { const c = await commentBox(o.comment, 'Buyurtmaga izoh'); if (c != null) dispatch('meta', { comment: c }, o.id); }
+    } else if (k === 'del') {
+      if (!it) return;
+      if (it.status === 'new') { dispatch('remove', { item_id: it.id }, o.id); ui.sel = null; }
+      else if (it.status !== 'cancelled') await cancelLine(o, it);
+    }
+  } catch (e) { fail(e); }
+  renderTicket(); renderCounts(); renderRail();
 }
 
 async function startOrder(type, extra = {}) {
@@ -295,10 +325,12 @@ async function addProduct(p, opts = {}) {
     }
     const o = current();
     const same = p.unit !== 'kg' && o.items.find((i) => i.status === 'new' && i.product_id === p.id && !i.comment);
-    if (same) dispatch('qty', { item_id: same.id, qty: same.qty + q }, o.id);
+    if (same) { dispatch('qty', { item_id: same.id, qty: same.qty + q }, o.id); ui.sel = same.id; }
     else {
       const cat = cats().find((c) => c.id === p.category_id);
-      dispatch('add', { item: { id: uid('i'), product_id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit, station_id: p.station_id || cat?.station_id || null } }, o.id);
+      const iid = uid('i');
+      dispatch('add', { item: { id: iid, product_id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit, station_id: p.station_id || cat?.station_id || null } }, o.id);
+      ui.sel = iid;
     }
     const tile = $(`#pgrid [data-p="${p.id}"]`); tile?.classList.remove('flash'); void tile?.offsetWidth; tile?.classList.add('flash');
     renderTicket(); renderCounts(); renderRail();
@@ -655,11 +687,13 @@ async function payment() {
     body: `<div class="pay"><div>
         <div class="due"><div class="l" data-dl>To'lanishi kerak</div><div class="v" data-due></div></div>
         <div class="methods">${PAY_METHODS.map((m) => `<button data-m="${m}">${esc(PAY_NAMES[m])}</button>`).join('')}</div>
+        <div class="payhint">Aralash to'lov: bir qismini yozing (masalan naqd 10 000) — qolgani uchun tugma chiqadi.</div>
         <div class="amount"><small data-ml>Summa</small><span data-amt>0</span></div>
         <div class="quick" data-quick></div>
         <div data-cust class="hint" style="margin-top:10px"></div></div>
       <div><div class="pad" data-pad>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-d="${d}">${d}</button>`).join('')}<button class="fn" data-d="000">000</button><button data-d="0">0</button><button class="fn" data-d="del">${icon('back')}</button></div>
         <button class="btn block lg" data-add style="margin-top:10px">To'lovni qo'shish</button>
+        <div class="splitrow" data-split hidden></div>
         <div class="paylist" data-list hidden></div><div class="change" data-change hidden></div></div></div>`,
     foot: `<button class="btn" data-x>Yopish</button><button class="btn ok lg" data-close disabled>${icon('check')}Buyurtmani yopish</button>`,
     onOpen: (m, close) => {
@@ -694,6 +728,15 @@ async function payment() {
         m.querySelector('[data-change]').hidden = !change;
         m.querySelector('[data-change]').innerHTML = `<span>Qaytim</span><span>${sum(change)}</span>`;
         m.querySelector('[data-cust]').innerHTML = method === 'qarz' ? (cur.customer?.id ? `Qarzga yoziladi: <b>${esc(cur.customer.name || cur.customer.phone)}</b>` : 'Qarzga — mijoz tanlanadi') : '';
+        // Aralash: kiritilgan summa qoldiqdan kam — qolganini boshqa turda bitta bosishda to'lab yopish.
+        const split = m.querySelector('[data-split]');
+        const rest = t.due - a;
+        split.hidden = !(t.due > 0 && a > 0 && rest > 0);
+        if (!split.hidden) {
+          split.innerHTML = `<span>${esc(PAY_NAMES[method])} <b>${sum(a)}</b> · qolgan <b>${sum(rest)}</b> so'm:</span>`
+            + PAY_METHODS.filter((x) => x !== method).map((x) => `<button data-rest="${x}">${esc(PAY_NAMES[x])}</button>`).join('');
+          split.querySelectorAll('[data-rest]').forEach((b) => b.onclick = () => splitPay(b.dataset.rest));
+        }
         m.querySelector('[data-close]').disabled = over > 0 || (t.due > 0 && !covers);
         m.querySelector('[data-add]').disabled = t.due <= 0;
       };
@@ -716,12 +759,23 @@ async function payment() {
         return true;
       };
       m.querySelector('[data-add]').onclick = () => addPay();
-      m.querySelector('[data-close]').onclick = async () => {
+      const finish = async () => {
         if (totals(o()).due > 0 && !(await addPay())) return;
         if (totals(o()).due > 0) { toast('Hali to\'lanmagan qism bor', 'bad'); return; }
         try { dispatch('close', { shift_id: shift()?.id }, id); } catch (e) { fail(e); return; }
         close(true);
       };
+      let splitting = false;
+      const splitPay = async (other) => {
+        if (splitting) return; splitting = true;
+        try {
+          if (!(await addPay())) return;
+          method = other; amt = String(totals(o()).due); prefilled = true;
+          if (!(await addPay())) return;
+          await finish();
+        } finally { splitting = false; }
+      };
+      m.querySelector('[data-close]').onclick = finish;
       const key = (e) => {
         if (!document.body.contains(m)) { document.removeEventListener('keydown', key); return; }
         // Ustida boshqa oyna (menejer PIN, mijoz tanlash) ochiq bo'lsa yoki maydonga yozilayotgan bo'lsa — bu oynaga tegishli emas.
@@ -1112,14 +1166,19 @@ document.addEventListener('click', async (e) => {
     if (d.new === 'olib' || d.new === 'yetkazish') { customer = await contactBox(d.new); if (customer === undefined) return; }
     return go('order', { back: d.new, order: null, draft: { type: d.new, customer, waiter_id: S.user.id } });
   }
-  if (d.cat) { ui.cat = Number(d.cat); ui.search = ''; const s = $('#psearch'); if (s) s.value = ''; $$('#cats button').forEach((b) => b.classList.toggle('on', b === t)); return renderProducts(); }
-  if (d.p) { const p = S.boot.products.find((x) => x.id === Number(d.p)); if (p) addProduct(p); return; }
+  if (d.cat) { ui.cat = Number(d.cat); ui.search = ''; const s = $('#psearch'); if (s) s.value = ''; $$('#ctabs [data-cat]').forEach((b) => b.classList.toggle('on', b === t)); return renderProducts(); }
+  if (d.p) {
+    const p = S.boot.products.find((x) => x.id === Number(d.p)); if (!p) return;
+    const n = Number(ui.buf) || 0; ui.buf = '';
+    addProduct(p, n && p.unit !== 'kg' ? { qty: n } : {}); return;
+  }
+  if (d.k) return padKey(d.k);
   if (d.inc || d.dec) {
     const o = current(); const it = o?.items.find((i) => i.id === (d.inc || d.dec)); if (!it) return;
     try { if (d.dec && it.qty <= 1) dispatch('remove', { item_id: it.id }, o.id); else dispatch('qty', { item_id: it.id, qty: it.qty + (d.inc ? 1 : -1) }, o.id); } catch (er) { fail(er); }
     renderTicket(); renderCounts(); return;
   }
-  if (d.line) return lineMenu(d.line);
+  if (d.line) { if (ui.sel === d.line) return lineMenu(d.line); ui.sel = d.line; return renderTicket(); }
   if ('send' in d) return sendKitchen();
   if ('precheck' in d) return precheck();
   if ('pay' in d) return payment();
