@@ -196,6 +196,43 @@ export function applyOp(order, op, ctx) {
       o.precheck_at = null;
       break;
     }
+    case 'xfer_out': {
+      // Taom boshqa buyurtmaga (stolga) ketdi. Hisobi qabul qilgan buyurtmada davom etadi.
+      const list = Array.isArray(d.items) ? d.items.slice(0, 100) : [];
+      if (!list.length) throw new OpError('bad_items', 'Taom tanlanmagan');
+      if (!d.to || d.to === o.id) throw new OpError('bad_target', 'Qayerga ko\'chirilishi noma\'lum');
+      for (const x of list) {
+        const it = item(o, x.id);
+        if (it.status === 'cancelled') throw new OpError('cancelled', 'Bekor qilingan taom ko\'chirilmaydi');
+        const q = x.qty != null ? qty3(x.qty) : it.qty;
+        if (!(q > 0) || q > it.qty) throw new OpError('bad_qty', 'Miqdor noto\'g\'ri');
+        if (q === it.qty) o.items = o.items.filter((i) => i.id !== it.id);
+        else { if (!x.new_id) throw new OpError('bad_split', 'Bo\'lish id si yo\'q'); it.qty = qty3(it.qty - q); }
+      }
+      o.moved = [...(o.moved || []), { to: String(d.to), n: list.length, at, by: op.by }].slice(-30);
+      o.precheck_at = null;
+      break;
+    }
+    case 'xfer_in': {
+      const list = Array.isArray(d.items) ? d.items.slice(0, 100) : [];
+      if (!list.length) throw new OpError('bad_items', 'Taom tanlanmagan');
+      for (const it of list) {
+        if (!it?.id || o.items.some((i) => i.id === it.id)) continue;
+        const q = qty3(it.qty); const mods = cleanMods(it.mods);
+        const base = it.base != null ? money(it.base) : money(it.price) - modSum(mods);
+        if (!(q > 0) || base < 0) throw new OpError('bad_qty', 'Miqdor yoki narx noto\'g\'ri');
+        const sent = it.status === 'sent';
+        const when = (v) => (v && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : at);
+        o.items.push({
+          id: String(it.id), product_id: it.product_id ?? null, name: cleanText(it.name, 120), price: base + modSum(mods), qty: q,
+          unit: it.unit === 'kg' ? 'kg' : 'dona', station_id: it.station_id ?? null, comment: cleanText(it.comment),
+          status: sent ? 'sent' : 'new', added_at: when(it.added_at), added_by: it.added_by ?? op.by, sent_at: sent ? when(it.sent_at) : null,
+          from_order: d.from ? String(d.from) : null, ...(mods.length ? { base, mods } : {}),
+        });
+      }
+      o.precheck_at = null;
+      break;
+    }
     case 'comment': {
       const it = item(o, d.item_id);
       if (it.status !== 'new') throw new OpError('sent', 'Yuborilgan taomga izoh yozilmaydi');

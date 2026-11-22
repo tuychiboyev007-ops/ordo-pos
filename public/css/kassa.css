@@ -330,3 +330,22 @@ body{user-select:none}
 .mqty b{min-width:36px;text-align:center;font-size:22px;font-variant-numeric:tabular-nums}
 .mtot{margin-right:auto;font-size:18px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .mtot b{font-size:22px;color:var(--ink)}
+
+/* ---- Chekni bo'lish, birlashtirish, bo'lib to'lash ---- */
+.pick-items{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
+.pick-items .pi{display:grid;grid-template-columns:minmax(0,1fr) 70px auto 110px;align-items:center;gap:10px;padding:10px 12px;border:2px solid var(--line);border-radius:12px;cursor:pointer;background:#fff}
+.pick-items .pi.on{border-color:var(--accent);background:#fff4ef}
+.pick-items .nm{font-size:16px;font-weight:600;line-height:1.2}.pick-items .nm small{display:block;font-size:12.5px;color:var(--muted);font-weight:500}
+.pick-items .mx{color:var(--muted);font-size:14px;text-align:right}
+.pick-items .qc{display:flex;align-items:center;gap:6px}
+.pick-items .qc button{width:44px;height:40px;border-radius:9px;border:1px solid var(--line);background:#fff;display:grid;place-items:center}
+.pick-items .qc b{min-width:34px;text-align:center;font-size:19px;font-variant-numeric:tabular-nums}
+.pick-items .sm{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.tpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.tpick button{min-height:72px;border-radius:12px;padding:8px 10px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;border:2px solid var(--line);background:#fff}
+.tpick button b{font-size:22px;font-weight:700}.tpick button span{font-size:12.5px;color:var(--muted)}
+.tpick button.busy{background:var(--ink);border-color:var(--ink);color:#fff}.tpick button.busy span{color:rgba(255,255,255,.7)}
+.splitp{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.splitp span{font-size:14px;color:var(--ink-3);font-weight:500}
+.splitp button{height:40px;padding:0 14px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:600}
+[data-perhint]{margin-top:6px;min-height:18px}

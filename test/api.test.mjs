@@ -480,6 +480,39 @@ group('Qo\'shimchalar: narx, ombor, tannarx');
   await sync([op('shift.close', { shift_id: SM, counted: 74000 })]);
 }
 
+group('Chekni bo\'lish va birlashtirish (taomni boshqa buyurtmaga ko\'chirish)');
+{
+  const SX = id('s'); await sync([op('shift.open', { shift_id: SX, cash: 0 })]);
+  const A = id('o'); const B = id('o'); const b1 = id('i'); const c1 = id('i'); const part = id('i');
+  let r = await sync([op('open', { type: 'olib', number: 71, shift_id: SX }, A), op('open', { type: 'olib', number: 72, shift_id: SX }, B),
+    op('add', { item: { id: b1, product_id: burger, name: 'Burger', price: 32000, qty: 3, unit: 'dona' } }, A),
+    op('add', { item: { id: c1, product_id: cola, name: 'Cola', price: 10000, qty: 1, unit: 'dona' } }, A), op('send', { item_ids: [b1] }, A)]);
+  ok(r.results.every((x) => x.ok), 'ikki buyurtma ochildi', r.results);
+  const srcItem = r.orders.find((o) => o.id === A).items.find((i) => i.id === b1);
+  r = await sync([op('xfer_in', { from: A, items: [{ ...srcItem, id: part, qty: 1 }] }, B), op('xfer_out', { to: B, items: [{ id: b1, qty: 1, new_id: part }] }, A)]);
+  const oa = r.orders.find((o) => o.id === A); const ob = r.orders.find((o) => o.id === B);
+  ok(oa.items.find((i) => i.id === b1).qty === 2 && ob.items[0].qty === 1 && ob.items[0].status === 'sent', '1 ta burger B ga o\'tdi, oshxonada holati saqlandi', [oa.items, ob.items]);
+  r = await sync([op('xfer_in', { from: A, items: [{ ...srcItem, id: part, qty: 1 }] }, B)]);
+  ok(r.orders[0].items.length === 1, 'takror ko\'chirish ikkilanmaydi');
+  r = await sync([op('xfer_out', { to: B, items: [{ id: b1, qty: 5 }] }, A)]);
+  ok(r.results[0].error === 'bad_qty', 'bor sonidan ko\'p ko\'chirilmaydi');
+  r = await sync([op('xfer_out', { to: A, items: [{ id: b1 }] }, A)]);
+  ok(r.results[0].error === 'bad_target', 'o\'ziga ko\'chirib bo\'lmaydi');
+  // Birlashtirish: B butunlay A ga qo'shiladi, B bekor bo'ladi
+  const bItems = (await sync([])).orders?.find?.((o) => o.id === B)?.items || ob.items;
+  r = await sync([op('xfer_in', { from: B, items: bItems }, A), op('xfer_out', { to: A, items: bItems.map((i) => ({ id: i.id, qty: i.qty })) }, B), op('void', { reason: 'Birlashtirildi', shift_id: SX }, B)]);
+  ok(r.results.every((x) => x.ok), 'birlashtirildi', r.results);
+  const merged = r.orders.find((o) => o.id === A);
+  ok(merged.items.filter((i) => i.product_id === burger).reduce((s, i) => s + i.qty, 0) === 3, 'A da yana 3 ta burger', merged.items);
+  ok(r.orders.find((o) => o.id === B).status === 'void', 'B bekor qilindi (menejersiz — taomi qolmagan)');
+  const beefBefore = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === beef).stock;
+  r = await sync([op('send', {}, A), op('pay', { payment: { id: id('y'), method: 'naqd', amount: 106000 } }, A), op('close', { shift_id: SX }, A)]);
+  ok(r.results.every((x) => x.ok) && r.orders[0].status === 'closed', 'birlashgan hisob yopildi: 3×32 000 + 10 000', r.results);
+  const beefAfter = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === beef).stock;
+  ok(Math.abs(beefBefore - beefAfter - 0.51) < 1e-9, 'ombordan 3 burger go\'shti bir marta yechildi', [beefBefore, beefAfter]);
+  await sync([op('shift.close', { shift_id: SX, counted: 106000 })]);
+}
+
 group('Restoranlar aralashmaydi');
 await call('POST', '/api/setup', { name: 'Boshqa kafe', email: 'b@t.uz', password: 'parol12345', pin: '1111' });
 const DEV2 = (await call('POST', '/api/device/login', { email: 'b@t.uz', password: 'parol12345' })).token;
