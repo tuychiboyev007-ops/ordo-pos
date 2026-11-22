@@ -176,6 +176,9 @@ export async function seedDemo(db) {
     }
     if (!open && R() < 0.06) o = applyOp(o, { id: uid('p'), type: 'discount', order_id: id, by: manager, at: iso(closeAt - 60e3), data: { kind: 'pct', value: pick([5, 10, 15]), reason: pick(['Doimiy mijoz', 'Tug\'ilgan kun', 'Kechikish uchun']) } }, ctx);
     if (open) { if (R() < 0.35) o = applyOp(o, { id: uid('p'), type: 'precheck', order_id: id, by: waiter, at: iso(openAt + 30 * 60e3), data: {} }, ctx); return o; }
+    // Yopilgan buyurtmaning taomlari allaqachon pishgan — aks holda oshxona ekrani kechagi o'nlab chekni "tayyorlanmoqda" deb ko'rsatardi.
+    const cooked = o.items.filter((x) => x.status === 'sent').map((x) => x.id);
+    if (cooked.length) o = applyOp(o, { id: uid('p'), type: 'ready', order_id: id, by: staff.oshpaz[0], at: iso(Math.min(closeAt - 60e3, openAt + (12 + Math.floor(R() * 14)) * 60e3)), data: { item_ids: cooked } }, ctx);
     const due = totals(o).total;
     let method = R() < 0.48 ? 'naqd' : R() < 0.55 ? 'karta' : pick(['click', 'payme', 'uzum']);
     if (type === 'zal' && R() < 0.03) {

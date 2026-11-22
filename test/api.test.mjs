@@ -21,6 +21,8 @@ if (process.env.TEST_DATABASE_URL) {
   const o = openDb(process.env.TEST_DATABASE_URL);
   db = o.db; endDb = () => o.sql.end({ timeout: 5 });
   await ensureSchema(db);
+  const n = (await db.first('SELECT COUNT(*)::int AS n FROM companies /* tenant:global */')).n;
+  if (n) { console.error(`Bazada ${n} ta restoran bor — sinov faqat BO'SH bazada ishlaydi (ishchi bazani buzmaslik uchun).`); await endDb(); process.exit(2); }
 } else {
   db = makeDb(pgliteClient(new PGlite()));
   await migrate(db);
