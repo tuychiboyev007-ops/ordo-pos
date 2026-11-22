@@ -33,3 +33,4 @@ Mahalliy nusxada macOS birinchi marta «node kiruvchi ulanishlarga ruxsat berils
   (`src/lib/pg.js` `ensureSchema`, `ordo_meta` jadvali).
 - Sinovlar haqiqiy Postgres'da: `TEST_DATABASE_URL=... npm test` — FAQAT bo'sh sinov bazasida.
 - Bo'sh bazani to'ldirish: `DATABASE_URL=... node dev/remote.mjs` (bazada restoran bo'lsa hech narsa qilmaydi).
+- Kunlik zaxira (GitHub Actions, tiklab tekshiriladi): `docs/ZAXIRA.md`.

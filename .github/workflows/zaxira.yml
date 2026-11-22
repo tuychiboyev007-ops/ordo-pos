@@ -1,0 +1,90 @@
+name: Kunlik zaxira (baza)
+
+# Har kuni internetdagi bazaning (Neon) to'liq nusxasini oladi va GitHub'da saqlaydi
+# (Actions → shu ish → Artifacts). Har safar nusxa bo'sh Postgres'ga TIKLAB ko'riladi —
+# "zaxira bor, lekin ochilmaydi" holati bo'lmasin.
+#
+# Sozlash — bir marta: `node dev/zaxira-sozla.mjs` (faqat o'qiy oladigan kirish ochadi
+# va BACKUP_DATABASE_URL secret'ini yozadi). Secret yo'q bo'lsa ish xato bilan to'xtaydi —
+# "zaxira ishlayapti" deb noto'g'ri o'ylanmasin.
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 06:00 Toshkent — kechki savdo tugagan
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  zaxira:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      tiklash:
+        image: postgres:18          # Neon'dagi bilan bir xil asosiy versiya
+        env:
+          POSTGRES_PASSWORD: tiklash
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SRC: ${{ secrets.BACKUP_DATABASE_URL }}
+      DST: postgresql://postgres:tiklash@localhost:5432/postgres
+    steps:
+      - name: Sozlama borligini tekshirish
+        run: |
+          if [ -z "$SRC" ]; then
+            echo "::error::BACKUP_DATABASE_URL secret yo'q. Kompyuterda: cd ~/Downloads/ordo-pos && node dev/zaxira-sozla.mjs"
+            exit 1
+          fi
+
+      # pg_dump serverdan eski bo'lmasligi kerak — PGDG'dan 18-versiya.
+      - name: postgresql-client 18
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+      - name: Nusxa olish
+        run: |
+          set -o pipefail
+          pg_dump --version
+          DAY=$(TZ=Asia/Tashkent date +%Y-%m-%d)
+          FILE="ordo-$DAY.sql.gz"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          # Oyning 1-sanasidagi nusxa uzoqroq (90 kun) saqlanadi, qolgani 30 kun.
+          if [ "$(TZ=Asia/Tashkent date +%d)" = "01" ]; then echo "KEEP=90" >> "$GITHUB_ENV"; else echo "KEEP=30" >> "$GITHUB_ENV"; fi
+          # Faqat ordo jadvallari (public). neon_auth — Neon'ning o'z sxemasi, bizga kerak emas.
+          pg_dump "$SRC" --schema=public --no-owner --no-privileges | gzip -9 > "$FILE"
+          SIZE=$(stat -c %s "$FILE")
+          echo "Nusxa hajmi: $SIZE bayt"
+          [ "$SIZE" -gt 20000 ] || { echo "::error::Nusxa juda kichik ($SIZE bayt) — zaxira olinmadi"; exit 1; }
+
+      - name: Tiklab ko'rish
+        run: |
+          # Quvursiz: `gunzip | grep -q` da grep erta to'xtab, pipefail bilan shart noto'g'ri chiqardi.
+          gunzip -c "$FILE" > tiklash.sql
+          # Nusxa "CREATE SCHEMA public" ni o'zi yaratsa — bo'sh bazadagi public'ni olib tashlaymiz.
+          if grep -q '^CREATE SCHEMA public;' tiklash.sql; then psql "$DST" -q -c 'DROP SCHEMA public CASCADE'; fi
+          psql "$DST" -v ON_ERROR_STOP=1 -q -f tiklash.sql > /dev/null
+          Q="SELECT count(*) FROM pg_tables WHERE schemaname = 'public'"
+          A=$(psql "$SRC" -At -c "$Q"); B=$(psql "$DST" -At -c "$Q")
+          echo "Jadvallar: bazada $A, tiklanganda $B"
+          [ "$A" = "$B" ] || { echo "::error::Tiklangan nusxada jadvallar soni mos emas"; exit 1; }
+          for t in companies users products orders payments stock_moves; do
+            echo "$t: $(psql "$DST" -At -c "SELECT count(*) FROM public.$t")"
+          done
+          [ "$(psql "$DST" -At -c 'SELECT count(*) FROM public.companies')" -gt 0 ] || { echo "::error::Tiklangan nusxada restoran yo'q"; exit 1; }
+
+      - name: GitHub'da saqlash
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: ${{ env.KEEP }}
+          compression-level: 0
