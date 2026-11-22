@@ -513,6 +513,32 @@ group('Chekni bo\'lish va birlashtirish (taomni boshqa buyurtmaga ko\'chirish)')
   await sync([op('shift.close', { shift_id: SX, counted: 106000 })]);
 }
 
+group('Oshxona ekrani: taom tayyor (to\'langan buyurtmada ham)');
+{
+  const SK = id('s'); await sync([op('shift.open', { shift_id: SK, cash: 0 })]);
+  const K = id('o'); const k1 = id('i'); const k2 = id('i');
+  let r = await sync([op('open', { type: 'olib', number: 81, shift_id: SK }, K),
+    op('add', { item: { id: k1, product_id: burger, name: 'Burger', price: 32000, qty: 1, unit: 'dona', station_id: st } }, K),
+    op('add', { item: { id: k2, product_id: cola, name: 'Cola', price: 10000, qty: 1, unit: 'dona' } }, K),
+    op('ready', { item_ids: [k1] }, K)]);
+  ok(r.results[3].ok && !r.orders[0].items[0].ready_at, 'yuborilmagan taom tayyor bo\'lmaydi');
+  r = await sync([op('send', {}, K), op('pay', { payment: { id: id('y'), method: 'naqd', amount: 42000 } }, K), op('close', { shift_id: SK }, K)]);
+  ok(r.orders[0].status === 'closed', 'olib ketish oldin to\'lanib yopildi');
+  r = await call('GET', '/api/kitchen', null, DEV);
+  ok(r.orders.some((o) => o.id === K), 'yopilgan, lekin pishmagan buyurtma oshxona ekranida', r.orders.map((o) => o.number));
+  r = await sync([op('ready', { item_ids: [k1] }, K)]);
+  ok(r.results[0].ok && r.orders[0].items.find((i) => i.id === k1).ready_at && r.orders[0].status === 'closed', 'yopilgan buyurtmada taom tayyor bo\'ldi, yopiqligicha qoldi', r.results[0]);
+  r = await sync([op('ready', { item_ids: [k1], undo: true }, K)]);
+  ok(!r.orders[0].items.find((i) => i.id === k1).ready_at, 'tayyor belgisi qaytarildi');
+  r = await sync([op('ready', { item_ids: [k1, k2] }, K)]);
+  ok(r.orders[0].items.every((i) => i.ready_at), 'ikkala taom tayyor');
+  const items = await db.all('SELECT id FROM order_items WHERE company_id = (SELECT company_id FROM orders WHERE id = ? /* tenant:global */) AND order_id = ?', K, K);
+  ok(items.length === 2, 'hisobot jadvali ikki marta yozilmadi', items.length);
+  r = await sync([op('qty', { item_id: k1, qty: 5 }, K)]);
+  ok(r.results[0].error === 'closed', 'yopilgan buyurtmada boshqa amal hamon taqiqlangan');
+  await sync([op('shift.close', { shift_id: SK, counted: 42000 })]);
+}
+
 group('Restoranlar aralashmaydi');
 await call('POST', '/api/setup', { name: 'Boshqa kafe', email: 'b@t.uz', password: 'parol12345', pin: '1111' });
 const DEV2 = (await call('POST', '/api/device/login', { email: 'b@t.uz', password: 'parol12345' })).token;

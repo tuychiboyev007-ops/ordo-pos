@@ -315,21 +315,7 @@ body{user-select:none}
 
 /* ---- Qo'shimchalar (modifikatorlar) ---- */
 .tk-line .md{width:100%;color:var(--ink-2);font-size:13px;font-weight:500}
-.mpick .mg{margin-bottom:16px}
-.mpick .mg h4{font-size:17px;font-weight:600;margin-bottom:8px;display:flex;align-items:baseline;gap:10px}
-.mpick .mg h4 small{font-size:13px;font-weight:500;color:var(--muted)}
-.mpick .mg.need h4{color:var(--bad)}
-.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.mtile{min-height:76px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:10px 12px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;gap:6px}
-.mtile span{font-size:16px;font-weight:600;line-height:1.15}
-.mtile b{font-size:14px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
-.mtile.on{border-color:var(--accent);background:#fff4ef}
-.mtile.on b{color:var(--accent-2)}
-.mqty{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:16px;font-weight:500}
-.mqty button{width:52px;height:46px;border-radius:10px;border:1px solid var(--line);background:#fff;display:grid;place-items:center}
-.mqty b{min-width:36px;text-align:center;font-size:22px;font-variant-numeric:tabular-nums}
-.mtot{margin-right:auto;font-size:18px;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.mtot b{font-size:22px;color:var(--ink)}
+
 
 /* ---- Chekni bo'lish, birlashtirish, bo'lib to'lash ---- */
 .pick-items{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
@@ -349,3 +335,5 @@ body{user-select:none}
 .splitp span{font-size:14px;color:var(--ink-3);font-weight:500}
 .splitp button{height:40px;padding:0 14px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:600}
 [data-perhint]{margin-top:6px;min-height:18px}
+
+.tk-line .st.ok{color:var(--ok);font-weight:600}

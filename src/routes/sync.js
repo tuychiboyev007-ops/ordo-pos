@@ -288,6 +288,19 @@ export async function state(req, env, db, auth) {
   return json({ ok: true, orders, stop, shift, notes, now: new Date().toISOString() });
 }
 
+/**
+ * Oshxona ekrani: oshxonaga yuborilgan, hali tayyor bo'lmagan taomlar.
+ * Yopilgan buyurtma ham kiradi (olib ketishda oldin to'lanadi) — oxirgi 8 soatdagisi.
+ */
+export async function kitchen(req, env, db, auth) {
+  const company = auth.c;
+  const since = new Date(Date.now() - 8 * 3600e3).toISOString();
+  const rows = (await db.all(`SELECT doc FROM orders WHERE company_id = ? AND (status = 'open' OR (status = 'closed' AND closed_at > ?)) ORDER BY opened_at LIMIT 400`, company, since)).map((r) => r.doc);
+  const cut = Date.now() - 20 * 60e3;
+  const orders = rows.filter((o) => o.items.some((i) => i.status === 'sent' && (!i.ready_at || Date.parse(i.ready_at) > cut)));
+  return json({ ok: true, orders, now: new Date().toISOString() });
+}
+
 /** Mijozlar (nasiya uchun tanlash) — kassa qidiradi. */
 export async function customers(req, env, db, auth) {
   const q = (new URL(req.url).searchParams.get('q') || '').trim().toLowerCase();

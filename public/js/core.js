@@ -150,6 +150,21 @@ export function applyOp(order, op, ctx) {
   }
 
   if (!o.opened_at) throw new OpError('no_order', 'Buyurtma ochilmagan');
+  // Oshxona: taom tayyor. Olib ketishda buyurtma oldin to'lanib yopiladi, oshxona esa keyin pishiradi —
+  // shuning uchun yopilgan buyurtmada ham ishlaydi (faqat ready_at o'zgaradi, pul va ombor emas).
+  if (op.type === 'ready') {
+    if (o.status === 'void') throw new OpError('closed', 'Buyurtma bekor qilingan');
+    const ids = new Set(Array.isArray(d.item_ids) ? d.item_ids.map(String) : []);
+    let n = 0;
+    for (const it of o.items) {
+      if (!ids.has(it.id) || it.status !== 'sent') continue;
+      if (d.undo) { if (it.ready_at) { it.ready_at = null; it.ready_by = null; n++; } }
+      else if (!it.ready_at) { it.ready_at = at; it.ready_by = op.by; n++; }
+    }
+    if (!n) return o;
+    o.rev++;
+    return o;
+  }
   if (o.status !== 'open') throw new OpError('closed', 'Buyurtma yopilgan');
 
   switch (op.type) {

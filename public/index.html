@@ -42,7 +42,9 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
 <script type="module">
 import { post, deviceToken, setDeviceToken } from '/js/api.js';
 const q = new URLSearchParams(location.search);
-if (deviceToken() && !q.has('qurilma')) location.replace('/kassa');
+// Ofitsiant telefoni yoki oshxona ekrani ham shu yerdan ulanadi va o'z sahifasiga qaytadi.
+const next = ['/kassa', '/ofitsiant', '/oshxona'].includes(q.get('keyin')) ? q.get('keyin') : '/kassa';
+if (deviceToken() && !q.has('qurilma')) location.replace(next);
 if (['localhost', '127.0.0.1'].includes(location.hostname)) document.getElementById('demo').hidden = false;
 document.getElementById('f').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -53,7 +55,7 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     setDeviceToken(r.token);
     // Yuborilmagan amallar (ordo.outbox) O'CHIRILMAYDI — kirgandan keyin serverga yuboriladi.
     ['ordo.boot', 'ordo.orders', 'ordo.recent', 'ordo.shift', 'ordo.notes', 'ordo.stop', 'ordo.counter'].forEach((k) => localStorage.removeItem(k));
-    location.replace('/kassa');
+    location.replace(next);
   } catch (x) { err.textContent = x.message; err.hidden = false; b.disabled = false; b.textContent = 'Kirish'; }
 });
 </script>

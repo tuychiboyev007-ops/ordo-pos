@@ -23,6 +23,7 @@ const ROUTES = {
   'POST /api/sync': ['device', S.sync],
   'GET /api/state': ['device', S.state],
   'GET /api/orders': ['device', S.ordersOfDay],
+  'GET /api/kitchen': ['device', S.kitchen],
   'GET /api/shift/report': ['device', S.shiftReport],
   'POST /api/stop': ['device', M.setStop],
   'GET /api/customers': ['device', S.customers],

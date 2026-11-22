@@ -8,6 +8,7 @@ import { S, on, start, refreshBoot, dispatch, openOrders, order, shift, notes, n
 import { deviceToken, get, post } from './api.js';
 import { $, $$, esc, sum, qty, time, dateTime, since, uid, initials, icon, toast, openModal, confirmBox, numberBox, isTopModal, MARK } from './ui.js';
 import { pinHash, sameHex } from './pin.js';
+import { modsFor, pickMods } from './mods.js';
 import { receiptHTML, kitchenHTML, cancelHTML, zReportHTML, print, printCfg, setPrintCfg } from './print.js';
 
 if (!deviceToken()) location.replace('/?qurilma=1');
@@ -23,8 +24,8 @@ const isManager = () => MANAGER_ROLES.includes(S.user?.role);
 const fail = (e) => toast(e?.message || 'Xatolik', 'bad');
 const avatar = (u, size = 32) => `<span class="av" style="background:${esc(u?.color || '#3d4a63')};width:${size}px;height:${size}px">${esc(initials(u?.name))}</span>`;
 const cats = () => S.boot?.categories || [];
-/** Taomga tegishli qo'shimcha guruhlari (pishloq, sous...). */
-const modsOf = (pid) => (S.boot?.modgroups || []).filter((g) => g.product_ids.includes(pid) && g.mods.length);
+const modsOf = (pid) => modsFor(S.boot, pid);
+const modPicker = (p, opts) => pickMods(S.boot, p, opts);
 const products = () => S.boot?.products || [];
 
 // =================== Qobiq ===================
@@ -236,7 +237,7 @@ function renderTicket() {
   const line = (it) => {
     const isNew = it.status === 'new'; const can = it.status === 'cancelled'; const on = ui.sel === it.id;
     const qlabel = it.unit === 'kg' ? qty(it.qty, 'kg') : `${qty(it.qty)}×`;
-    const st = can ? `<span class="st bad">Bekor · ${esc(it.cancel_reason || '')}</span>` : isNew ? '<span class="st new">Yangi</span>' : `<span class="st">${icon('send')}${time(it.sent_at)}</span>`;
+    const st = can ? `<span class="st bad">Bekor · ${esc(it.cancel_reason || '')}</span>` : isNew ? '<span class="st new">Yangi</span>' : it.ready_at ? `<span class="st ok">${icon('check')}Tayyor ${time(it.ready_at)}</span>` : `<span class="st">${icon('send')}${time(it.sent_at)}</span>`;
     return `<div class="tk-line ${isNew ? 'new' : ''} ${can ? 'cancelled' : ''} ${on ? 'on' : ''}" data-line="${it.id}">
       <span class="q">${qlabel}</span><span class="nm">${esc(it.name)}</span><span class="sm">${sum(lineSum(it))}</span>
       <span class="meta">${it.mods?.length ? `<span class="md">${esc(modsText(it))}</span>` : ''}${it.comment ? `<span class="cm">${icon('note')}${esc(it.comment)}</span>` : ''}${st}${on && isNew && it.unit !== 'kg'
@@ -338,44 +339,6 @@ async function addProduct(p, opts = {}) {
     const tile = $(`#pgrid [data-p="${p.id}"]`); tile?.classList.remove('flash'); void tile?.offsetWidth; tile?.classList.add('flash');
     renderTicket(); renderCounts(); renderRail();
   } catch (e) { fail(e); }
-}
-
-/** Qo'shimchalarni tanlash: majburiy guruhdan bittasi, ixtiyoriylardan istalgancha. */
-function modPicker(p, { qty: q0 = 1, current = null } = {}) {
-  const groups = modsOf(p.id);
-  const sel = new Set((current || []).map((m) => m.id));
-  const editing = !!current;
-  return openModal({
-    title: `${p.name} — qo'shimchalar`, size: 'wide',
-    body: `<div class="mpick">${groups.map((g) => `<section class="mg" data-g="${g.id}"><h4>${esc(g.name)}<small>${g.required ? 'majburiy · ' : ''}${g.multi ? 'bir nechtasini tanlash mumkin' : 'bittasini tanlang'}</small></h4>
-        <div class="mgrid">${g.mods.map((m) => `<button class="mtile" data-mod="${m.id}" data-g="${g.id}"><span>${esc(m.name)}</span><b>${m.price ? '+ ' + sum(m.price) : 'bepul'}</b></button>`).join('')}</div></section>`).join('')}
-      ${!editing && p.unit !== 'kg' ? `<div class="mqty"><span>Soni</span><button data-qm="-">${icon('minus')}</button><b data-q>${q0}</b><button data-qm="+">${icon('plus')}</button></div>` : ''}</div>`,
-    foot: `<span class="mtot" data-tot></span><button class="btn" data-x>Bekor</button><button class="btn pay lg" data-ok>${editing ? 'Saqlash' : 'Qo\'shish'}</button>`,
-    onOpen: (m, close) => {
-      let q = q0;
-      const all = new Map(groups.flatMap((g) => g.mods.map((x) => [x.id, { ...x, g }])));
-      const draw = () => {
-        m.querySelectorAll('.mtile').forEach((b) => b.classList.toggle('on', sel.has(Number(b.dataset.mod))));
-        const per = p.price + [...sel].reduce((s_, id) => s_ + (all.get(id)?.price || 0), 0);
-        m.querySelector('[data-tot]').innerHTML = `${sum(per)}${q > 1 ? ` × ${q} = <b>${sum(per * q)}</b>` : ''}`;
-        const qb = m.querySelector('[data-q]'); if (qb) qb.textContent = q;
-      };
-      m.querySelectorAll('.mtile').forEach((b) => b.onclick = () => {
-        const id = Number(b.dataset.mod); const g = all.get(id).g;
-        if (sel.has(id)) sel.delete(id);
-        else { if (!g.multi) g.mods.forEach((x) => sel.delete(x.id)); sel.add(id); }
-        draw();
-      });
-      m.querySelectorAll('[data-qm]').forEach((b) => b.onclick = () => { q = Math.max(1, q + (b.dataset.qm === '+' ? 1 : -1)); draw(); });
-      m.querySelector('[data-ok]').onclick = () => {
-        const miss = groups.find((g) => g.required && !g.mods.some((x) => sel.has(x.id)));
-        if (miss) { toast(`«${miss.name}» — tanlash shart`, 'bad'); m.querySelector(`.mg[data-g="${miss.id}"]`)?.classList.add('need'); return; }
-        const mods = groups.flatMap((g) => g.mods.filter((x) => sel.has(x.id)).map((x) => ({ id: x.id, name: x.name, price: x.price })));
-        close({ mods, qty: q });
-      };
-      draw();
-    },
-  });
 }
 
 async function sendKitchen(silent = false, id = null) {

@@ -122,7 +122,7 @@ async function tick() {
     S.online = true;
   } catch (e) {
     S.online = !e.offline ? S.online : false;
-    if (e.status === 401) location.href = '/?qurilma=1';
+    if (e.status === 401) location.href = '/?qurilma=1&keyin=' + encodeURIComponent(location.pathname);
   } finally {
     S.syncing = false;
     emit();

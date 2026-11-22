@@ -1,0 +1,59 @@
+/* ordo — oshxona ekrani: qorong'i fon, katta yozuv (2-3 metrdan o'qilsin), kartochka bosiladi */
+html,body{background:#0f1626;color:#e9edf5;height:100%}
+body{user-select:none;overflow:hidden}
+#app{height:100vh;display:flex;flex-direction:column}
+
+.k-lock{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:50px 20px}
+.k-lock .lg{display:flex;align-items:center;gap:10px;margin-bottom:24px}.k-lock .lg svg{width:42px;height:42px;color:#fff}.k-lock .lg b{font-size:32px}.k-lock .lg span{opacity:.6}
+.k-lock p{opacity:.75;margin-bottom:14px}
+.k-lock .who{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;width:100%;max-width:760px}
+.k-lock .who button{min-height:110px;border-radius:16px;background:#18223a;border:1px solid #26314d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-weight:500}
+.k-lock .who .av{width:48px;height:48px;font-size:17px}
+.k-lock .pin{display:flex;flex-direction:column;align-items:center;width:320px}
+.k-lock .pin .nm{font-size:20px;font-weight:600}
+.k-lock .dots{display:flex;gap:14px;margin:18px 0 22px}.k-lock .dots i{width:16px;height:16px;border-radius:50%;border:2px solid #6f7a93}.k-lock .dots i.on{background:#fff;border-color:#fff}
+.k-lock .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
+.k-lock .pad button{height:64px;border-radius:999px;background:#18223a;color:#fff;font-size:26px}.k-lock .pad button.fn{font-size:15px;color:#aab3c6}
+
+.k-top{flex:none;display:flex;align-items:center;gap:14px;height:62px;padding:0 16px;background:#0a101d;border-bottom:1px solid #1b2438}
+.k-top .mk svg{width:32px;height:32px;color:#fff;display:block}
+.k-top > b{font-size:20px}
+.k-top .seg{display:flex;gap:6px}
+.k-top .seg button{height:40px;padding:0 16px;border-radius:10px;background:#18223a;color:#c9d1e3;font-weight:600}
+.k-top .seg button.on{background:#ff6a3d;color:#fff}
+.k-top .sp{flex:1}
+.k-top .cnt{color:#8b95ab;font-size:15px}
+.k-top .net span{display:flex;align-items:center;gap:6px;font-size:13px;color:#ffc46b}.k-top .net .off{color:#ff9b9b}
+.k-top .net svg.i{width:16px;height:16px}
+.k-top .clock{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.k-top .ib{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:#c9d1e3;font-size:13px}
+.k-top .ib:hover{background:#18223a}
+
+.k-board{flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));grid-auto-rows:max-content;gap:12px;align-content:start;align-items:start}
+.tk{background:#18223a;border:2px solid #26314d;border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
+.tk header{display:flex;align-items:baseline;gap:10px;padding:12px 14px 4px}
+.tk header b{font-size:26px;font-weight:700}
+.tk header .wh{font-size:18px;font-weight:600;color:#c9d1e3;flex:1}
+.tk header .tm{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:#7fd8a6}
+.tk.warn{border-color:#e8a317}.tk.warn header .tm{color:#ffc46b}
+.tk.bad{border-color:#ff5a5a;animation:late 1.6s ease-in-out infinite}.tk.bad header .tm{color:#ff8a8a}
+@keyframes late{50%{border-color:#7a2a2a}}
+.tk .sub{padding:0 14px 8px;font-size:13.5px;color:#8b95ab}.tk .sub i{color:#ffb199;font-style:normal}
+.tk ul{list-style:none;padding:0;margin:0;border-top:1px solid #26314d;flex:1}
+.tk li{display:grid;grid-template-columns:46px 1fr auto;gap:8px;align-items:center;padding:12px 14px;border-bottom:1px solid #1f2942;cursor:pointer}
+.tk li .q{font-size:24px;font-weight:700;color:#ff8a5c;font-variant-numeric:tabular-nums}
+.tk li .n{font-size:19px;font-weight:600;line-height:1.2}
+.tk li .n small{display:block;font-size:15px;font-weight:500;color:#ffd0bd;margin-top:2px}
+.tk li .n small.c{color:#ff9b9b;font-weight:700}
+.tk li svg.i{width:26px;height:26px;color:#7fd8a6}
+.tk li.rd{background:#10261c}.tk li.rd .n,.tk li.rd .q{color:#7fd8a6;text-decoration:line-through;text-decoration-thickness:2px}
+.tk li:active{background:#22304f}
+.tk .all{display:flex;align-items:center;justify-content:center;gap:8px;height:56px;background:#1d8a55;color:#fff;font-size:17px;font-weight:700}
+.tk .all:active{background:#166b42}
+.k-empty{grid-column:1/-1;text-align:center;color:#6f7a93;padding:80px 20px;font-size:20px}.k-empty svg.i{width:56px;height:56px;margin:0 auto 12px;display:block}
+
+.k-done{flex:none;display:flex;gap:8px;align-items:center;overflow-x:auto;padding:10px 14px;background:#0a101d;border-top:1px solid #1b2438;min-height:58px}
+.k-done:empty{display:none}
+.k-done .h{color:#8b95ab;font-size:13px;white-space:nowrap}
+.k-done button{flex:none;height:40px;padding:0 12px;border-radius:10px;background:#10261c;color:#7fd8a6;font-weight:600;display:flex;gap:8px;align-items:center}
+.k-done button i{font-style:normal;color:#8b95ab;font-weight:500;font-size:12.5px}
