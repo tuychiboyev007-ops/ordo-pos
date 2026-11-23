@@ -32,19 +32,30 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 let hidden = false;
 const write = rl._writeToOutput.bind(rl);
 rl._writeToOutput = (s) => { if (!hidden) write(s); else if (/[\r\n]/.test(s)) write('\n'); };   // parol yozilganda ekranga chiqmaydi
-const lines = []; const waiters = [];
+const lines = []; const waiters = []; let closed = false;
 rl.on('line', (l) => { const w = waiters.shift(); if (w) w(l); else lines.push(l); });
-rl.on('close', () => { while (waiters.length) waiters.shift()(null); });
+rl.on('close', () => { closed = true; while (waiters.length) waiters.shift()(null); });
 const ask = (q, secret = false) => new Promise((res) => {
   process.stdout.write(q); hidden = secret;
   const done = (l) => { hidden = false; if (secret && !process.stdin.isTTY) process.stdout.write('\n'); res(l === null ? null : String(l).trim()); };
-  if (lines.length) done(lines.shift()); else waiters.push(done);
+  if (lines.length) done(lines.shift()); else if (closed) done(null); else waiters.push(done);   // kirish tugagan bo'lsa kutib qolmaydi
 });
 const stop = async (msg, sql) => { console.error('\n' + msg); rl.close(); if (sql) await sql.end({ timeout: 3 }); process.exit(1); };
 
 const sql = postgres(url, { prepare: false, onnotice: () => {}, max: 1 });
-const owners = await sql`SELECT u.id, u.company_id, u.email, c.name FROM users u JOIN companies c ON c.id = u.company_id
-  WHERE u.role = 'owner' AND u.active ORDER BY c.id, u.id`;
+// Internet bir lahza uzilsa (telefon orqali ulanishda nom topilmay qoladi) skript yiqilmasin — bir necha marta urinadi.
+let owners;
+for (let i = 1; ; i++) {
+  try {
+    owners = await sql`SELECT u.id, u.company_id, u.email, c.name FROM users u JOIN companies c ON c.id = u.company_id
+      WHERE u.role = 'owner' AND u.active ORDER BY c.id, u.id`;
+    break;
+  } catch (e) {
+    if (i >= 5) await stop(`Bazaga ulanib bo'lmadi (${e.code || e.message}). Internetni tekshirib, buyruqni qayta ishga tushiring.`, sql);
+    console.log(`Bazaga ulanmoqda... (${i}-urinish)`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
 if (!owners.length) await stop('Bazada restoran egasi topilmadi.', sql);
 
 console.log(DRY ? 'SINOV rejimi — hech narsa yozilmaydi.\n' : '');
