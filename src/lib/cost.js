@@ -11,9 +11,36 @@
  */
 const n = (v) => Number(v) || 0;
 
+/**
+ * Har masalliqning 1 birlik narxi. Zagotovka (yarim tayyor) uchun — tarkibidagi masalliqlarning HOZIRGI narxidan:
+ * (Σ miqdor × narx) ÷ chiqishi. Tarkibdagi biror masalliq narxi noma'lum bo'lsa — zagotovkaning o'z o'rtacha narxi
+ * (oxirgi «Tayyorlash» hujjatidan). Zagotovka ichida zagotovka bo'lmaydi, shuning uchun bitta o'tish yetarli.
+ */
+export async function ingCosts(db, c) {
+  const ings = await db.all('SELECT id, cost::float8 AS cost, prep, yield::float8 AS yield FROM ingredients WHERE company_id = ?', c);
+  const map = new Map(ings.map((i) => [i.id, n(i.cost)]));
+  if (!ings.some((i) => i.prep)) return map;
+  const lines = await db.all('SELECT prep_id, ingredient_id, qty::float8 AS qty FROM prep_lines WHERE company_id = ?', c);
+  const own = new Map(map);
+  for (const i of ings) {
+    if (!i.prep) continue;
+    const ls = lines.filter((l) => l.prep_id === i.id);
+    if (!ls.length || ls.some((l) => !((own.get(l.ingredient_id) || 0) > 0))) continue;
+    map.set(i.id, ls.reduce((s, l) => s + n(l.qty) * own.get(l.ingredient_id), 0) / (n(i.yield) > 0 ? n(i.yield) : 1));
+  }
+  return map;
+}
+
 export async function unitCosts(db, c) {
-  const rec = await db.all(`SELECT r.product_id, COUNT(*)::int AS lines, COUNT(*) FILTER (WHERE i.cost <= 0)::int AS missing, SUM(r.qty * i.cost)::float8 AS cost
-    FROM recipes r JOIN ingredients i ON i.id = r.ingredient_id AND i.company_id = r.company_id WHERE r.company_id = ? GROUP BY r.product_id`, c);
+  const ic = await ingCosts(db, c);
+  const byProduct = new Map();
+  for (const r of await db.all('SELECT product_id, ingredient_id, qty::float8 AS qty FROM recipes WHERE company_id = ?', c)) {
+    const x = byProduct.get(r.product_id) || { product_id: r.product_id, lines: 0, missing: 0, cost: 0 };
+    const unit = ic.get(r.ingredient_id) || 0;
+    x.lines++; if (!(unit > 0)) x.missing++; x.cost += n(r.qty) * unit;
+    byProduct.set(r.product_id, x);
+  }
+  const rec = [...byProduct.values()];
   const prods = await db.all('SELECT id, cost::float8 AS cost FROM products WHERE company_id = ?', c);
   const map = new Map();
   for (const p of prods) {

@@ -14,14 +14,14 @@ const fail = (e) => toast(e?.message || 'Xatolik', 'bad');
 const S = (p) => get(p, { auth: 'session' });
 const P = (p, b) => post(p, b, { auth: 'session' });
 const UNIT = { kg: 'kg', l: 'litr', dona: 'dona' };
-const KIND = { kirim: 'Kirim', utilizatsiya: 'Utilizatsiya', inventar: 'Inventarizatsiya' };
+const KIND = { kirim: 'Kirim', utilizatsiya: 'Utilizatsiya', inventar: 'Inventarizatsiya', tayyorlash: 'Tayyorlash' };
 const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 
 /** Boshqaruv — bo'limlar va ularning sahifalari; hammasi yon panelda doim ko'rinib turadi. */
 const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
   ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['analytics', 'Analitika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
-  ['stock', 'box', 'Ombor', [['stock', 'Masalliqlar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
+  ['stock', 'box', 'Ombor', [['stock', 'Masalliqlar'], ['preps', 'Zagotovkalar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
   ['menu', 'list', 'Menyu', [['menu', 'Taomlar va texkarta'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
   ['money', 'wallet', 'Pul', [['expenses', 'Rasxod'], ['debts', 'Nasiya'], ['suppliers', 'Yetkazib beruvchilar']]],
   ['set', 'gear', 'Sozlamalar', [['settings', 'Restoran, bot, parol'], ['staff', 'Xodimlar'], ['halls', 'Zal va stollar']]],
@@ -418,7 +418,7 @@ async function movesModal(id, name, unit) {
   openModal({
     title: `${name || 'Masalliq'} — harakatlar (30 kun)`, size: 'xl',
     body: d.moves.length ? `<div class="tbl-wrap" style="max-height:60vh"><table class="tbl"><thead><tr><th>Vaqt</th><th>Turi</th><th>Nima</th><th class="r">Miqdor</th><th class="r">Narx</th><th class="r">Qoldiq</th><th>Kim</th></tr></thead><tbody>
-      ${d.moves.map((x) => `<tr><td>${dateTime(x.at)}</td><td>${esc({ kirim: 'Kirim', sotuv: 'Sotuv', utilizatsiya: 'Utilizatsiya', inventar: 'Inventarizatsiya', bekor: 'Bekor qilindi' }[x.kind] || x.kind)}</td>
+      ${d.moves.map((x) => `<tr><td>${dateTime(x.at)}</td><td>${esc({ kirim: 'Kirim', sotuv: 'Sotuv', utilizatsiya: 'Utilizatsiya', inventar: 'Inventarizatsiya', bekor: 'Bekor qilindi', tayyorlash: x.qty > 0 ? 'Tayyorlandi' : 'Zagotovkaga ketdi' }[x.kind] || x.kind)}</td>
       <td>${x.product ? esc(x.product) : ''}${x.number ? ` <span class="dim">№${esc(x.number)}</span>` : ''}${x.doc_id ? ` <span class="dim">hujjat #${x.doc_id}</span>` : ''}${x.note ? ` <span class="dim">${esc(x.note)}</span>` : ''}</td>
       <td class="r ${x.qty < 0 ? 'neg' : 'okc'}">${x.qty > 0 ? '+' : ''}${qty(x.qty, unit)}</td><td class="r">${sum(x.cost)}</td><td class="r">${qty(x.balance, unit)}</td><td>${esc(x.user_name || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Harakat yo\'q</div>',
   });
@@ -437,7 +437,7 @@ PAGES.stock = async (m) => {
     + `<div class="stats">${stat('Ombor qiymati (tannarxda)', sum(total), `${d.ingredients.length} ta masalliq`, 'accent')}${stat('Kam qolgan', low, 'eng kam qoldiqdan past')}${stat('Manfiy qoldiq', `<span class="${neg ? 'neg' : ''}">${neg}</span>`, 'kirim kiritilmagan')}</div>
     <div class="card mt"><div class="card-h"><input class="input" id="q" placeholder="Qidirish: nomi yoki guruhi" value="${esc(A.stockQ || '')}" style="max-width:340px"><span class="grow"></span></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Masalliq</th><th>Guruh</th><th class="r">Qoldiq</th><th class="r">Eng kam</th><th class="r">1 birlik narxi</th><th class="r">Qiymati</th><th class="r">Taomlarda</th><th></th></tr></thead><tbody>
-    ${rows.map((i) => `<tr class="click" data-i="${i.id}"><td><b>${esc(i.name)}</b></td><td class="dim">${esc(i.grp || '')}</td>
+    ${rows.map((i) => `<tr class="click" data-i="${i.id}"><td><b>${esc(i.name)}</b>${i.prep ? ' <span class="badge">zagotovka</span>' : ''}</td><td class="dim">${esc(i.grp || '')}</td>
       <td class="r ${i.stock < 0 ? 'neg' : ''}"><b>${qty(i.stock, i.unit)}</b> ${i.low ? '<span class="badge warn">kam</span>' : ''}</td><td class="r dim">${qty(i.min_stock, i.unit)}</td>
       <td class="r">${sum(i.cost)} <span class="dim">/ ${UNIT[i.unit]}</span></td><td class="r">${sum(i.value)}</td><td class="r dim">${i.dishes || '—'}</td>
       <td class="r"><button class="btn sm ghost" data-edit="${i.id}">${icon('edit')}</button></td></tr>`).join('') || '<tr><td colspan="8"><div class="empty">Masalliq yo\'q — "+ Masalliq" bilan qo\'shing</div></td></tr>'}
@@ -445,7 +445,10 @@ PAGES.stock = async (m) => {
   $('#q').oninput = (e) => { A.stockQ = e.target.value; clearTimeout(A.qt); A.qt = setTimeout(() => show('stock').then(() => { const i = $('#q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
   $('#add').onclick = () => ingredientForm();
   $$('[data-doc]', m).forEach((b) => b.onclick = () => docForm(b.dataset.doc));
-  $$('[data-edit]', m).forEach((b) => b.onclick = (e) => { e.stopPropagation(); ingredientForm(d.ingredients.find((i) => i.id === Number(b.dataset.edit))); });
+  $$('[data-edit]', m).forEach((b) => b.onclick = async (e) => {
+    e.stopPropagation(); const ig = d.ingredients.find((i) => i.id === Number(b.dataset.edit));
+    if (ig.prep) prepForm((await S('/api/stock/preps')).preps.find((p) => p.id === ig.id)); else ingredientForm(ig);
+  });
   $$('[data-i]', m).forEach((r) => { const ig = d.ingredients.find((i) => i.id === Number(r.dataset.i)); r.onclick = () => movesModal(ig.id, ig.name, ig.unit); });
 };
 
@@ -475,7 +478,7 @@ async function ingredientForm(ing = null) {
       <details class="more" ${ing && (ing.grp || ing.min_stock) ? 'open' : ''}><summary>Qo'shimcha: guruh va eng kam qoldiq</summary>
         <div class="grid2" style="margin-top:10px"><div class="field"><label>Guruh</label><input class="input" data-g list="grps" value="${esc(ing?.grp || '')}" placeholder="Go'sht, Sabzavot…"><datalist id="grps">${groups.map((g) => `<option value="${esc(g)}">`).join('')}</datalist></div>
         <div class="field"><label>Eng kam qoldiq (kam qolsa ogohlantiradi)</label><div class="unitbox"><input class="input" data-m inputmode="decimal" value="${ing?.min_stock ? String(ing.min_stock).replace('.', ',') : ''}" placeholder="masalan 2"><span data-mu>${UNIT[unit]}</span></div></div></div></details>`,
-    foot: `${ing ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button>${ing ? '' : '<button class="btn" data-again>Saqlash va yana qo\'shish</button>'}<button class="btn primary" data-ok>Saqlash</button>`,
+    foot: `${ing ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><button class="btn ghost" data-toprep title="Bu masalliq o'zi boshqa masalliqlardan tayyorlanadi (kotlet, sous…)">Zagotovka qilish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button>${ing ? '' : '<button class="btn" data-again>Saqlash va yana qo\'shish</button>'}<button class="btn primary" data-ok>Saqlash</button>`,
     onOpen: (mm, close) => {
       const nameI = mm.querySelector('[data-n]');
       const setUnit = (u) => { unit = u; $$('.uchip', mm).forEach((b) => b.classList.toggle('on', b.dataset.uv === u)); const su = mm.querySelector('[data-su]'); if (su) su.textContent = UNIT[u]; mm.querySelector('[data-mu]').textContent = UNIT[u]; hint(); };
@@ -506,6 +509,7 @@ async function ingredientForm(ing = null) {
       };
       mm.querySelector('[data-ok]').onclick = () => save(false);
       mm.querySelector('[data-again]')?.addEventListener('click', () => save(true));
+      mm.querySelector('[data-toprep]')?.addEventListener('click', () => { close(false); prepForm(null, ing); });
       mm.querySelector('[data-del]')?.addEventListener('click', async () => {
         if (!(await confirmBox(`${ing.name} o'chirilsinmi? Texkartalardan ham olib tashlanadi.`, { danger: true, ok: 'O\'chirish' }))) return;
         try { await P('/api/stock/ingredient/remove', { id: ing.id }); toast('O\'chirildi', 'ok'); close(true); } catch (e) { fail(e); }
@@ -688,7 +692,7 @@ PAGES.docs = async (m, mode = '') => {
     + (inv ? `<div class="card mt" style="padding:12px 16px;font-size:14px">Qanday qilinadi: <b>«Inventarizatsiya qilish»</b>ni bosing → ombordagi masalliqlarni sanab, haqiqiy miqdorini yozing (sanalmaganini bo'sh qoldiring) → Saqlash. Qoldiq shu songa tenglanadi, farq <b>Moddiy hisobot</b>dagi «Inventar / farq» ustunida ko'rinadi.</div>
       <div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length, 'tanlangan davrda')}</div>`
       : waste ? `<div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length)}${stat('Zarar (tannarxda)', sum(wasteSum), 'moddiy hisobotda alohida ustun')}</div>`
-      : `<div class="seg mt" id="kinds">${[['', 'Hammasi'], ['kirim', 'Kirim'], ['utilizatsiya', 'Utilizatsiya'], ['inventar', 'Inventarizatsiya']].map(([k, l]) => `<button data-k="${k}" class="${kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)
+      : `<div class="seg mt" id="kinds">${[['', 'Hammasi'], ['kirim', 'Kirim'], ['utilizatsiya', 'Utilizatsiya'], ['inventar', 'Inventarizatsiya'], ['tayyorlash', 'Tayyorlash']].map(([k, l]) => `<button data-k="${k}" class="${kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)
     + `
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Sana</th><th>Turi</th><th>Yetkazib beruvchi / sabab</th><th class="r">Qatorlar</th><th class="r">Summa</th><th class="r">To'landi</th><th>Kim</th></tr></thead><tbody>
     ${d.docs.map((x) => `<tr class="click" data-id="${x.id}" style="${x.cancelled_at ? 'opacity:.5' : ''}"><td>${x.id}</td><td>${dateTime(x.at)}</td><td><span class="badge ${x.kind === 'kirim' ? 'ok' : x.kind === 'utilizatsiya' ? 'bad' : ''}">${KIND[x.kind]}</span>${x.cancelled_at ? ' <span class="badge">bekor</span>' : ''}</td>
@@ -715,6 +719,174 @@ async function docView(id) {
       try { await P('/api/stock/doc/cancel', { id }); toast('Bekor qilindi', 'ok'); close(); show(A.page); } catch (e) { fail(e); }
     }),
   });
+}
+
+// =================== Zagotovkalar (yarim tayyor mahsulot) ===================
+PAGES.preps = async (m) => {
+  const d = await S('/api/stock/preps');
+  const hist = (await S(`/api/stock/docs?from=${dayShift(today(), -30)}&to=${today()}&kind=tayyorlash`)).docs;
+  const ready = d.preps.reduce((s, p) => s + Math.max(0, p.stock) * p.cost, 0);
+  const unknown = d.preps.filter((p) => p.no_cost).length;
+  m.innerHTML = head('Zagotovkalar', 'Yarim tayyor mahsulot: kotlet, sous, xamir, marinad… O\'zi masalliqlardan tayyorlanadi, taom texkartasiga bitta element bo\'lib qo\'yiladi',
+    `<button class="btn" id="make" ${d.preps.length ? '' : 'disabled'}>${icon('flame')}Tayyorlash</button><button class="btn primary" id="add">${icon('plus')}Zagotovka</button>`)
+    + `<div class="card" style="padding:12px 16px;font-size:14px;line-height:1.55"><b>Qanday ishlaydi.</b> 1) Zagotovkaning tarkibini yozing: nimadan tayyorlanadi va shu tarkibdan qancha chiqadi (masalan 1 kg qiyma + 100 g piyoz → 10 dona kotlet).
+      2) Taom texkartasida uni oddiy masalliqdek tanlang («Kotlet — 1 dona»). 3) Taom sotilganda omborda <b>tayyori</b> bo'lsa o'shandan ayiriladi, bo'lmasa <b>tarkibidagi masalliqlar</b> o'zi ayiriladi.
+      Oldindan ko'p tayyorlab qo'ysangiz «Tayyorlash»ni bosing — masalliq ombordan chiqadi, tayyor zagotovka soni ko'rinib turadi.</div>
+    <div class="stats mt">${stat('Zagotovkalar', d.preps.length, 'turi', 'accent')}${stat('Tayyor turgani (tannarxda)', sum(Math.round(ready)))}${stat('Narxi to\'liq emas', `<span class="${unknown ? 'neg' : ''}">${unknown}</span>`, 'tarkibidagi masalliq kirim qilinmagan')}</div>
+    <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Zagotovka</th><th>Tarkibi</th><th class="r">Chiqishi</th><th class="r">1 birlik tannarxi</th><th class="r">Tayyor (omborda)</th><th class="r">Taomlarda</th><th></th></tr></thead><tbody>
+    ${d.preps.map((p) => `<tr class="click" data-p="${p.id}"><td><b>${esc(p.name)}</b>${p.grp ? `<div class="dim">${esc(p.grp)}</div>` : ''}</td>
+      <td class="wrap">${p.lines.map((l) => `${esc(l.name)} <span class="dim">${qty(l.qty, l.unit)}</span>`).join(', ') || '<span class="neg">tarkibi yozilmagan</span>'}</td>
+      <td class="r">${qty(p.yield, p.unit)}</td><td class="r">${p.cost ? sum(p.cost) : '<span class="dim">—</span>'} <span class="dim">/ ${UNIT[p.unit]}</span>${p.no_cost ? ' <span class="badge warn">chala</span>' : ''}</td>
+      <td class="r"><b>${qty(p.stock, p.unit)}</b>${p.low ? ' <span class="badge warn">kam</span>' : ''}</td><td class="r dim">${p.dishes || '—'}</td>
+      <td class="r" style="white-space:nowrap"><button class="btn sm" data-make="${p.id}">${icon('flame')}Tayyorlash</button> <button class="btn sm ghost" data-edit="${p.id}">${icon('edit')}</button></td></tr>`).join('')
+      || '<tr><td colspan="7"><div class="empty">Zagotovka yo\'q — «+ Zagotovka» bilan qo\'shing</div></td></tr>'}
+    </tbody></table></div></div>
+    <div class="card mt"><div class="card-h"><h3>Tayyorlashlar</h3><span class="hint">so'nggi 30 kun</span></div><div class="tbl-wrap">
+      ${hist.length ? `<table class="tbl"><thead><tr><th>#</th><th>Sana</th><th>Izoh</th><th class="r">Tannarxi</th><th>Kim</th></tr></thead><tbody>
+      ${hist.map((x) => `<tr class="click" data-doc="${x.id}" style="${x.cancelled_at ? 'opacity:.5' : ''}"><td>${x.id}</td><td>${dateTime(x.at)}</td><td>${esc(x.note || '')}${x.cancelled_at ? ' <span class="badge">bekor</span>' : ''}</td><td class="r"><b>${sum(x.total)}</b></td><td>${esc(x.user_name || '')}</td></tr>`).join('')}</tbody></table>`
+      : '<div class="empty">Hali tayyorlash yozilmagan — bu majburiy emas: yozilmasa, sotuvda masalliqlar o\'zi ayiriladi</div>'}</div></div>`;
+  const P_ = (id) => d.preps.find((p) => p.id === Number(id));
+  $('#add').onclick = () => prepForm();
+  $('#make').onclick = () => produceForm(d.preps);
+  $$('[data-make]', m).forEach((b) => b.onclick = (e) => { e.stopPropagation(); produceForm(d.preps, P_(b.dataset.make)); });
+  $$('[data-edit]', m).forEach((b) => b.onclick = (e) => { e.stopPropagation(); prepForm(P_(b.dataset.edit)); });
+  $$('[data-p]', m).forEach((r) => r.onclick = () => prepForm(P_(r.dataset.p)));
+  $$('[data-doc]', m).forEach((r) => r.onclick = () => docView(Number(r.dataset.doc)));
+};
+
+/**
+ * Zagotovka kartasi: nomi, o'lchovi, tarkibi va shu tarkibdan qancha chiqishi.
+ * `base` — oddiy masalliq: uni zagotovkaga aylantirish (qoldig'i va texkartalardagi o'rni saqlanadi).
+ */
+async function prepForm(p = null, base = null) {
+  const all = (await S('/api/stock/ingredients')).ingredients;
+  const self = p?.id || base?.id || 0;
+  const raw = all.filter((i) => !i.prep && i.id !== self).map((i) => ({ id: i.id, name: i.name, unit: i.unit, cost: i.cost, stock: i.stock, hint: `${qty(i.stock, i.unit)} bor` }));
+  const groups = [...new Set(all.map((i) => i.grp).filter(Boolean))];
+  let unit = p?.unit || base?.unit || 'dona';
+  const num = (v) => String(v).replace('.', ',');
+  const line = (l = {}) => `<div class="ln" data-pl>${picker(raw, l.ingredient_id)}<div class="unitbox"><input class="input" data-q inputmode="decimal" value="${l.qty ? num(l.qty) : ''}" placeholder="0"><span data-u>${l.ingredient_id ? UNIT[raw.find((x) => x.id === l.ingredient_id)?.unit] || '' : ''}</span></div><span class="sum" data-s></span><button class="icon-btn" type="button" data-rm>${icon('x')}</button></div>`;
+  const res = await openModal({
+    title: p ? `${p.name} — zagotovka` : base ? `${base.name} — zagotovkaga aylantirish` : 'Yangi zagotovka', size: 'xl',
+    body: `<div class="grid2"><div class="field"><label>Nomi</label><input class="input" data-n value="${esc(p?.name || base?.name || '')}" placeholder="masalan: Kotlet, Burger sousi, Xamir" autofocus></div>
+        <div class="field"><label>Guruh</label><input class="input" data-g list="pgrps" value="${esc(p?.grp || base?.grp || '')}" placeholder="Zagotovka"><datalist id="pgrps">${groups.map((g) => `<option value="${esc(g)}">`).join('')}</datalist></div></div>
+      <div class="field"><label>Tayyor zagotovka qanday o'lchanadi?</label>${unitChips(unit)}</div>
+      <div class="lbl" style="margin:6px 0 6px">Tarkibi — nimadan tayyorlanadi <span class="dim" style="font-weight:400">— bir partiya uchun. Miqdor masalliqning o'z o'lchovida: 1 (kg), «500 g», 2 (dona)</span></div>
+      <div class="lines rec"><div class="ln h"><span>Masalliq</span><span>Miqdor</span><span class="r">Narxi</span><span></span></div><div data-pls>${(p?.lines?.length ? p.lines : [{}, {}]).map(line).join('')}</div></div>
+      <button class="btn sm" type="button" data-more>${icon('plus')}Masalliq qo'shish</button>
+      <div class="field" style="margin-top:14px;max-width:420px"><label>Shu tarkibdan qancha tayyor zagotovka chiqadi?</label><div class="unitbox"><input class="input" data-y inputmode="decimal" value="${p ? num(p.yield) : ''}" placeholder="masalan 10"><span data-yu>${UNIT[unit]}</span></div></div>
+      <div class="foodcost"><div>Partiya tannarxi<b data-bc>0</b></div><div>1 <span data-cu>${UNIT[unit]}</span> tannarxi<b data-uc>—</b></div><div>Omborda tayyori<b>${qty(p?.stock ?? base?.stock ?? 0, unit)}</b></div></div>
+      <p class="hint" data-warn style="margin-top:8px"></p>
+      <details class="more" ${p?.min_stock ? 'open' : ''}><summary>Qo'shimcha: eng kam qoldiq</summary>
+        <div class="field" style="margin-top:10px;max-width:420px"><label>Tayyor zagotovka shundan kam qolsa ogohlantirsin</label><div class="unitbox"><input class="input" data-m inputmode="decimal" value="${p?.min_stock ? num(p.min_stock) : ''}" placeholder="masalan 10"><span data-mu>${UNIT[unit]}</span></div></div></details>`,
+    foot: `${p ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><button class="btn ghost" data-unset>Oddiy masalliq qilish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
+    onOpen: (mm, close) => {
+      const box = mm.querySelector('[data-pls]');
+      const read = () => $$('[data-pl]', mm).map((ln) => {
+        const id = Number(ln.querySelector('[data-pkq]').dataset.id) || 0; const i = raw.find((x) => x.id === id);
+        const qi = ln.querySelector('[data-q]'); const qp = qtyParse(qi.value, i?.unit || 'kg');
+        return { ln, id, i, qi, qp, name: ln.querySelector('[data-pkq]').value.trim() };
+      });
+      const calc = () => {
+        let batch = 0; let missing = 0;
+        for (const r of read()) {
+          r.ln.querySelector('[data-u]').textContent = r.i ? UNIT[r.i.unit] : '';
+          r.qi.classList.toggle('bad', !r.qp.ok);
+          const s = r.i && r.qp.v > 0 ? Math.round(r.qp.v * r.i.cost) : 0;
+          if (r.i && r.qp.v > 0 && !(r.i.cost > 0)) missing++;
+          r.ln.querySelector('[data-s]').textContent = s ? sum(s) : r.i && r.qp.v > 0 ? 'narxi yo\'q' : '';
+          batch += s;
+        }
+        const yp = qtyParse(mm.querySelector('[data-y]').value, unit);
+        mm.querySelector('[data-y]').classList.toggle('bad', !yp.ok);
+        mm.querySelector('[data-bc]').textContent = sum(batch);
+        mm.querySelector('[data-uc]').textContent = yp.v > 0 && batch ? sum(Math.round(batch / yp.v)) : '—';
+        mm.querySelector('[data-warn]').textContent = missing ? `${missing} ta masalliqning narxi yo'q (hali kirim qilinmagan) — tannarx chala hisoblanadi. Ombor → Kirim orqali narxini kiriting.` : '';
+      };
+      const bind = () => {
+        bindPickers(mm, raw, calc, createIngredient);
+        $$('[data-rm]', mm).forEach((b) => b.onclick = () => { b.closest('[data-pl]').remove(); if (!box.children.length) box.insertAdjacentHTML('beforeend', line()); bind(); calc(); });
+      };
+      const setUnit = (u) => { unit = u; $$('.uchip', mm).forEach((b) => b.classList.toggle('on', b.dataset.uv === u)); for (const k of ['[data-yu]', '[data-cu]', '[data-mu]']) mm.querySelector(k).textContent = UNIT[u]; calc(); };
+      $$('.uchip', mm).forEach((b) => b.onclick = () => setUnit(b.dataset.uv));
+      mm.querySelector('[data-more]').onclick = () => { box.insertAdjacentHTML('beforeend', line()); bind(); box.lastElementChild.querySelector('[data-pkq]').focus(); };
+      mm.addEventListener('input', calc);
+      bind(); calc();
+      mm.querySelector('[data-ok]').onclick = async () => {
+        const name = mm.querySelector('[data-n]').value.trim(); if (!name) { toast('Nomini yozing', 'bad'); mm.querySelector('[data-n]').focus(); return; }
+        const rows = read().filter((r) => r.name || r.qi.value.trim());
+        if (!rows.length) { toast('Tarkibini yozing — zagotovka nimadan tayyorlanadi', 'bad'); return; }
+        for (const r of rows) {
+          if (!r.i) { toast(`«${r.name || '…'}» — ro'yxatdan masalliqni tanlang`, 'bad'); r.ln.querySelector('[data-pkq]').focus(); return; }
+          if (!r.qp.ok || !(r.qp.v > 0)) { toast(`${r.i.name} — miqdorini yozing (masalan 1 yoki «500 g»)`, 'bad'); r.qi.focus(); return; }
+        }
+        if (new Set(rows.map((r) => r.id)).size !== rows.length) { toast('Bir masalliq ikki marta yozilgan', 'bad'); return; }
+        const yi = mm.querySelector('[data-y]'); const yp = qtyParse(yi.value, unit);
+        if (!yp.ok || !(yp.v > 0)) { toast('Shu tarkibdan qancha chiqishini yozing (masalan 10)', 'bad'); yi.focus(); return; }
+        const mp = qtyParse(mm.querySelector('[data-m]').value, unit);
+        if (!mp.ok) { toast('Eng kam qoldiq son bo\'lsin', 'bad'); mm.querySelector('[data-m]').focus(); return; }
+        try {
+          await P('/api/stock/prep', { id: self || undefined, name, unit, grp: mm.querySelector('[data-g]').value, min_stock: mp.v, yield: yp.v, lines: rows.map((r) => ({ ingredient_id: r.id, qty: r.qp.v })) });
+          toast('Zagotovka saqlandi', 'ok'); close(true);
+        } catch (e) { fail(e); }
+      };
+      mm.querySelector('[data-del]')?.addEventListener('click', async () => {
+        if (!(await confirmBox(`${p.name} o'chirilsinmi? Taomlar texkartasidan ham olib tashlanadi.`, { danger: true, ok: 'O\'chirish' }))) return;
+        try { await P('/api/stock/ingredient/remove', { id: p.id }); toast('O\'chirildi', 'ok'); close(true); } catch (e) { fail(e); }
+      });
+      mm.querySelector('[data-unset]')?.addEventListener('click', async () => {
+        if (!(await confirmBox(`${p.name} oddiy masalliq bo'lsinmi? Tarkibi o'chadi — sotuvda faqat o'zining qoldig'idan ayiriladi. Qoldig'i va texkartalardagi o'rni saqlanadi.`, { ok: 'Ha' }))) return;
+        try { await P('/api/stock/prep/unset', { id: p.id }); toast('Oddiy masalliq bo\'ldi', 'ok'); close(true); } catch (e) { fail(e); }
+      });
+    },
+  });
+  if (res) show(A.page === 'stock' ? 'stock' : 'preps');
+}
+
+/** Tayyorlash: N birlik zagotovka tayyorlandi — masalliqlar ombordan chiqadi, zagotovka kiradi. */
+async function produceForm(preps, pre = null) {
+  const ok_ = preps.filter((p) => p.lines.length);
+  if (!ok_.length) { toast('Avval zagotovkaning tarkibini yozing', 'bad'); return; }
+  let cur = pre?.lines.length ? pre : ok_.length === 1 ? ok_[0] : null;
+  const res = await openModal({
+    title: 'Tayyorlash — zagotovka tayyorlandi', size: 'wide',
+    body: `<div class="grid2"><div class="field"><label>Qaysi zagotovka</label><select class="input" data-p><option value="">— tanlang —</option>${ok_.map((p) => `<option value="${p.id}" ${cur?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Qancha tayyorlandi</label><div class="unitbox"><input class="input" data-q inputmode="decimal" placeholder="masalan 50" autofocus><span data-u>${cur ? UNIT[cur.unit] : ''}</span></div></div></div>
+      <div class="field"><label>Izoh</label><input class="input" data-note placeholder="ixtiyoriy: ertalabki partiya…"></div>
+      <div data-need></div>`,
+    foot: `<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
+    onOpen: (mm, close) => {
+      const qi = mm.querySelector('[data-q]');
+      const draw = () => {
+        cur = ok_.find((p) => p.id === Number(mm.querySelector('[data-p]').value)) || null;
+        mm.querySelector('[data-u]').textContent = cur ? UNIT[cur.unit] : '';
+        const qp = qtyParse(qi.value, cur?.unit || 'dona'); qi.classList.toggle('bad', !qp.ok);
+        const box = mm.querySelector('[data-need]');
+        if (!cur) { box.innerHTML = ''; return { q: 0, short: [] }; }
+        const k = qp.v / cur.yield; const short = [];
+        const rows = cur.lines.map((l) => { const need = Math.round(l.qty * k * 1000) / 1000; const lack = need > l.stock + 1e-9; if (lack && need > 0) short.push(l.name); return { ...l, need, lack }; });
+        const cost = rows.reduce((s, l) => s + l.need * l.cost, 0);
+        box.innerHTML = `<div class="lbl" style="margin:8px 0 6px">Ombordan chiqadi <span class="dim" style="font-weight:400">— ${qty(cur.yield, cur.unit)} uchun yozilgan tarkib bo'yicha</span></div>
+          <table class="tbl"><thead><tr><th>Masalliq</th><th class="r">Kerak</th><th class="r">Omborda bor</th><th class="r">Summa</th></tr></thead><tbody>
+          ${rows.map((l) => `<tr><td>${esc(l.name)}</td><td class="r"><b>${qp.v > 0 ? qty(l.need, l.unit) : '—'}</b></td><td class="r ${l.lack && qp.v > 0 ? 'neg' : 'dim'}">${qty(l.stock, l.unit)}${l.lack && qp.v > 0 ? ' — yetmaydi' : ''}</td><td class="r">${qp.v > 0 ? sum(Math.round(l.need * l.cost)) : ''}</td></tr>`).join('')}
+          <tr class="total"><td colspan="3">Partiya tannarxi${qp.v > 0 && cost ? ` · 1 ${UNIT[cur.unit]} = ${sum(Math.round(cost / qp.v))}` : ''}</td><td class="r">${qp.v > 0 ? sum(Math.round(cost)) : ''}</td></tr></tbody></table>
+          <p class="hint" style="margin-top:8px">Hozir omborda tayyori: <b>${qty(cur.stock, cur.unit)}</b>${qp.v > 0 ? ` → saqlangach <b>${qty(cur.stock + qp.v, cur.unit)}</b>` : ''}</p>`;
+        return { q: qp.ok ? qp.v : 0, short };
+      };
+      mm.querySelector('[data-p]').onchange = draw; qi.oninput = draw; draw();
+      mm.querySelector('[data-ok]').onclick = async () => {
+        const { q, short } = draw();
+        if (!cur) { toast('Zagotovkani tanlang', 'bad'); return; }
+        if (!(q > 0)) { toast('Qancha tayyorlanganini yozing', 'bad'); qi.focus(); return; }
+        if (short.length && !(await confirmBox(`Omborda yetmaydi: ${short.join(', ')}. Baribir yozilsinmi? Bu masalliqlar qoldig'i manfiyga tushadi (kirim kiritilmagan bo'lishi mumkin).`, { ok: 'Ha, yozilsin' }))) return;
+        try {
+          await P('/api/stock/doc', { kind: 'tayyorlash', note: mm.querySelector('[data-note]').value, lines: [{ ingredient_id: cur.id, qty: q }] });
+          toast(`${cur.name}: ${qty(q, cur.unit)} tayyorlandi — masalliqlar ombordan chiqdi`, 'ok'); close(true);
+        } catch (e) { fail(e); }
+      };
+    },
+  });
+  if (res) show('preps');
 }
 
 // ---- Menyu ----
@@ -745,7 +917,7 @@ PAGES.menu = async (m) => {
 
 async function productForm(p, d) {
   const ings = (await S('/api/stock/ingredients')).ingredients;
-  const ilist = ings.map((i) => ({ id: i.id, name: i.name, unit: i.unit, cost: i.cost, hint: UNIT[i.unit] }));
+  const ilist = ings.map((i) => ({ id: i.id, name: i.name, unit: i.unit, cost: i.cost, hint: i.prep ? `zagotovka · ${UNIT[i.unit]}` : UNIT[i.unit] }));
   const rec = p ? await S('/api/stock/recipe?product_id=' + p.id) : { lines: [] };
   let createdId = null; // texkarta saqlanmay qolsa, qayta "Saqlash" ikkinchi taom yaratmasin
   const toInput = (l) => { const u = ilist.find((x) => x.id === l.ingredient_id)?.unit; return u === 'dona' ? String(l.qty).replace('.', ',') : String(Math.round(l.qty * 1000 * 10) / 10).replace('.', ','); };

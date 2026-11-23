@@ -375,6 +375,115 @@ group('Analitika: oldingi davr bilan solishtirish, ABC, hafta kuni va soat');
   ok(r.status === 401 || r.status === 403, 'qurilma belgisi bilan (rahbar emas) ochilmaydi', r.status);
 }
 
+// ---------- Zagotovka ----------
+group('Zagotovka (yarim tayyor): tarkib, tayyorlash, sotuvda ayirish');
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  const stocks = async () => Object.fromEntries((await call('GET', '/api/stock/ingredients', null, SES)).ingredients.map((x) => [x.id, x]));
+  const qiyma = await mk('Qiyma Z', 'kg'); const piyoz = await mk('Piyoz Z', 'kg'); const non = await mk('Bulka Z', 'dona');
+  let r = await call('POST', '/api/stock/doc', { kind: 'kirim', lines: [{ ingredient_id: qiyma, qty: 10, price: 80000 }, { ingredient_id: piyoz, qty: 5, price: 4000 }, { ingredient_id: non, qty: 100, price: 1500 }] }, SES);
+  ok(r.ok, 'masalliqlar kirim qilindi', r);
+
+  r = await call('POST', '/api/stock/prep', { name: 'Kotlet Z', unit: 'dona', yield: 10, lines: [] }, SES);
+  ok(r.status === 400 && r.error === 'empty', 'tarkibsiz zagotovka rad etiladi', r);
+  r = await call('POST', '/api/stock/prep', { name: 'Kotlet Z', unit: 'dona', yield: 0, lines: [{ ingredient_id: qiyma, qty: 1 }] }, SES);
+  ok(r.status === 400 && r.error === 'bad_yield', 'chiqishi 0 — rad etiladi', r);
+  r = await call('POST', '/api/stock/prep', { name: 'Kotlet Z', unit: 'dona', yield: 10, lines: [{ ingredient_id: qiyma, qty: 1 }, { ingredient_id: piyoz, qty: 0.1 }] }, SES);
+  ok(r.ok && r.id, 'zagotovka saqlandi: 1 kg qiyma + 100 g piyoz → 10 dona kotlet', r);
+  const kot = r.id;
+  r = await call('POST', '/api/stock/prep', { name: 'kotlet z', unit: 'dona', yield: 1, lines: [{ ingredient_id: qiyma, qty: 1 }] }, SES);
+  ok(r.status === 409, 'takror nom rad etiladi', r.status);
+  r = await call('POST', '/api/stock/prep', { name: 'Sous Z', unit: 'kg', yield: 1, lines: [{ ingredient_id: kot, qty: 1 }] }, SES);
+  ok(r.status === 400 && r.error === 'nested', 'zagotovka ichiga zagotovka qo\'yilmaydi', r);
+  r = await call('POST', '/api/stock/prep', { id: qiyma, name: 'Qiyma Z', unit: 'kg', yield: 1, lines: [{ ingredient_id: piyoz, qty: 1 }] }, SES);
+  ok(r.status === 400 && r.error === 'nested', 'boshqa zagotovka tarkibidagi masalliq zagotovkaga aylanmaydi', r);
+  r = await call('POST', '/api/stock/prep', { name: 'X', unit: 'kg', yield: 1, lines: [{ ingredient_id: qiyma, qty: 1 }] }, DEV);
+  ok(r.status === 401 || r.status === 403, 'faqat rahbar', r.status);
+
+  r = await call('GET', '/api/stock/preps', null, SES);
+  let pz = r.preps.find((x) => x.id === kot);
+  ok(pz && pz.yield === 10 && pz.lines.length === 2 && pz.batch_cost === 80400 && pz.cost === 8040 && pz.stock === 0, 'ro\'yxat: tarkib va 1 dona tannarxi (80 400 ÷ 10 = 8 040)', pz);
+  let S0 = await stocks();
+  ok(S0[kot].prep === true && Math.round(S0[kot].cost) === 8040 && S0[qiyma].prep === false, 'masalliqlar ro\'yxatida zagotovka belgisi va hisoblangan narxi', S0[kot]);
+
+  const zb = (await call('POST', '/api/admin/product', { name: 'Burger Z', price: 30000, category_id: cat }, SES)).id;
+  r = await call('POST', '/api/stock/recipe', { product_id: zb, lines: [{ ingredient_id: kot, qty: 1 }, { ingredient_id: non, qty: 1 }] }, SES);
+  ok(r.ok, 'taom texkartasiga zagotovka qo\'yildi');
+  r = await call('GET', '/api/stock/recipe-costs', null, SES);
+  ok(r.costs[zb]?.cost === 9540 && r.costs[zb].src === 'texkarta', 'taom tannarxi: kotlet 8 040 + bulka 1 500 = 9 540 (hali tayyorlanmagan bo\'lsa ham)', r.costs[zb]);
+  r = await call('GET', '/api/stock/recipe?product_id=' + zb, null, SES);
+  ok(r.cost === 9540, 'texkarta oynasida ham shu tannarx', r.cost);
+
+  const SHZ = id('s'); await sync([op('shift.open', { shift_id: SHZ, cash: 0 })]);
+  const sell = async (q) => { const O = id('o'); const rr = await sync([op('open', { type: 'olib', number: 1, shift_id: SHZ }, O), op('add', { item: { id: id('i'), product_id: zb, name: 'Burger Z', price: 30000, qty: q, unit: 'dona', station_id: null } }, O),
+    op('send', {}, O), op('pay', { payment: { id: id('y'), method: 'naqd', amount: 30000 * q } }, O), op('close', { shift_id: SHZ }, O)]); return rr.results.every((x) => x.ok); };
+
+  // 1) Tayyori yo'q — tarkibidagi masalliqlar ayiriladi
+  ok(await sell(2), '2 ta burger sotildi (kotlet tayyorlanmagan)');
+  let S1 = await stocks();
+  ok(near(S1[qiyma].stock, 9.8) && near(S1[piyoz].stock, 4.98) && S1[non].stock === 98 && S1[kot].stock === 0, 'tayyor kotlet yo\'q — qiyma 200 g, piyoz 20 g, bulka 2 dona ayirildi', [S1[qiyma].stock, S1[piyoz].stock, S1[non].stock, S1[kot].stock]);
+
+  // 2) Tayyorlash: 20 dona
+  r = await call('POST', '/api/stock/doc', { kind: 'tayyorlash', lines: [{ ingredient_id: qiyma, qty: 1 }] }, SES);
+  ok(r.status === 400 && r.error === 'not_prep', 'oddiy masalliqni "tayyorlab" bo\'lmaydi', r);
+  r = await call('POST', '/api/stock/doc', { kind: 'tayyorlash', lines: [{ ingredient_id: kot, qty: 20 }] }, SES);
+  ok(r.ok, '20 dona kotlet tayyorlandi', r);
+  const pdoc = r.id;
+  S1 = await stocks();
+  ok(near(S1[qiyma].stock, 7.8) && near(S1[piyoz].stock, 4.78) && S1[kot].stock === 20, 'qiyma 2 kg, piyoz 200 g chiqdi; kotlet 20 dona kirdi', [S1[qiyma].stock, S1[piyoz].stock, S1[kot].stock]);
+  r = await call('GET', '/api/stock/doc?id=' + pdoc, null, SES);
+  ok(r.doc.kind === 'tayyorlash' && r.doc.total === 160800 && r.moves.length === 3, 'hujjat: 3 ta harakat, tannarxi 160 800', [r.doc.total, r.moves.length]);
+  pz = (await call('GET', '/api/stock/preps', null, SES)).preps.find((x) => x.id === kot);
+  ok(pz.stock === 20 && pz.cost === 8040, 'zagotovka: 20 dona, 8 040 dan');
+
+  // 3) Tayyori bor — o'shandan olinadi
+  ok(await sell(3), '3 ta burger sotildi (kotlet tayyor)');
+  S1 = await stocks();
+  ok(S1[kot].stock === 17 && near(S1[qiyma].stock, 7.8) && S1[non].stock === 95, 'tayyor kotletdan 3 dona ayirildi, qiymaga tegilmadi', [S1[kot].stock, S1[qiyma].stock]);
+
+  // 4) Utilizatsiya: 18 dona — 17 tasi tayyoridan, 1 tasi masalliqdan
+  r = await call('POST', '/api/stock/doc', { kind: 'utilizatsiya', reason: 'buzildi', lines: [{ ingredient_id: kot, qty: 18 }] }, SES);
+  ok(r.ok, 'kotlet utilizatsiya qilindi', r);
+  S1 = await stocks();
+  ok(S1[kot].stock === 0 && near(S1[qiyma].stock, 7.7) && near(S1[piyoz].stock, 4.77), 'utilizatsiya: tayyori tugadi, yetmagani tarkibidan (qiyma 100 g)', [S1[kot].stock, S1[qiyma].stock, S1[piyoz].stock]);
+
+  // 5) Aralash: 2 dona tayyor + 3 ta burger → 2 tasi tayyoridan, 1 tasi masalliqdan
+  await call('POST', '/api/stock/doc', { kind: 'tayyorlash', lines: [{ ingredient_id: kot, qty: 2 }] }, SES);
+  ok(await sell(3), '3 ta burger sotildi (kotlet 2 dona tayyor)');
+  S1 = await stocks();
+  ok(S1[kot].stock === 0 && near(S1[qiyma].stock, 7.4) && near(S1[piyoz].stock, 4.74), 'tayyori yetmasa — qolgani masalliqdan: manfiyga tushmaydi', [S1[kot].stock, S1[qiyma].stock, S1[piyoz].stock]);
+
+  // 6) Tayyorlash hujjatini bekor qilish
+  r = await call('POST', '/api/stock/doc', { kind: 'tayyorlash', lines: [{ ingredient_id: kot, qty: 10 }] }, SES);
+  await call('POST', '/api/stock/doc/cancel', { id: r.id }, SES);
+  S1 = await stocks();
+  ok(S1[kot].stock === 0 && near(S1[qiyma].stock, 7.4) && near(S1[piyoz].stock, 4.74), 'bekor qilingan tayyorlash: masalliq qaytdi, kotlet chiqdi', [S1[kot].stock, S1[qiyma].stock]);
+
+  // 7) Moddiy hisobot balanslanadi
+  r = await call('GET', `/api/reports/material?from=${today()}&to=${today()}`, null, SES);
+  const mq = r.rows.find((x) => x.id === qiyma); const mk_ = r.rows.find((x) => x.id === kot);
+  ok(mq && near(mq.open_q + mq.in_q - mq.used_q - mq.waste_q + mq.inv_q, mq.close_q) && near(mq.close_q, 7.4), 'moddiy hisobot: qiyma qatori balansda', mq);
+  ok(mk_ && near(mk_.open_q + mk_.in_q - mk_.used_q - mk_.waste_q + mk_.inv_q, mk_.close_q) && mk_.in_q === 32, 'moddiy hisobot: kotlet — tayyorlangani kirim ustunida (20 + 2 + 10)', mk_);
+  ok(near(mq.used_q, 0.2 + 2 + 0.2 + 0.1 + 1), 'qiyma sarfi: sotuv + zagotovkaga ketgani', mq.used_q);
+
+  // 8) Tarkibni o'zgartirish, oddiy masalliqqa qaytarish, masalliqni o'chirish
+  r = await call('POST', '/api/stock/prep', { id: kot, name: 'Kotlet Z', unit: 'dona', yield: 20, lines: [{ ingredient_id: qiyma, qty: 1 }] }, SES);
+  pz = (await call('GET', '/api/stock/preps', null, SES)).preps.find((x) => x.id === kot);
+  ok(r.ok && pz.lines.length === 1 && pz.yield === 20 && pz.cost === 4000, 'tarkib tahrirlandi: 1 kg qiyma → 20 dona (4 000 dan)', pz);
+  r = await call('POST', '/api/stock/prep/unset', { id: kot }, SES);
+  S1 = await stocks();
+  ok(r.ok && S1[kot].prep === false && !(await call('GET', '/api/stock/preps', null, SES)).preps.some((x) => x.id === kot), 'oddiy masalliqqa qaytarildi');
+  r = await call('GET', '/api/stock/recipe?product_id=' + zb, null, SES);
+  ok(r.lines.some((l) => l.ingredient_id === kot), 'texkartadagi o\'rni saqlandi');
+  r = await call('POST', '/api/stock/prep', { id: kot, name: 'Kotlet Z', unit: 'dona', yield: 10, lines: [{ ingredient_id: qiyma, qty: 1 }, { ingredient_id: piyoz, qty: 0.1 }] }, SES);
+  ok(r.ok && r.id === kot, 'mavjud masalliq zagotovkaga aylantirildi');
+  await call('POST', '/api/stock/ingredient/remove', { id: piyoz }, SES);
+  pz = (await call('GET', '/api/stock/preps', null, SES)).preps.find((x) => x.id === kot);
+  ok(pz.lines.length === 1 && pz.lines[0].ingredient_id === qiyma, 'o\'chirilgan masalliq tarkibdan ham chiqadi', pz.lines);
+  r = await sync([op('shift.close', { shift_id: SHZ, counted: 0 })]);
+  ok(r.results[0].ok, 'sinov smenasi yopildi', r.results[0]);
+}
+
 // ---------- Telegram bot ----------
 group('Telegram bot: buyurtma kassaga tushadi, holat botga qaytadi');
 {

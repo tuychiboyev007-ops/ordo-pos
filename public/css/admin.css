@@ -181,3 +181,6 @@ details.more summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:
 .track.sm{height:4px;border-radius:2px;background:var(--line-2);overflow:hidden;margin-top:5px;max-width:220px}
 .track.sm i{display:block;height:100%;background:var(--teal)}
 .tbl td.pos{color:var(--ok)}
+
+/* Zagotovkalar */
+.tbl td.wrap{white-space:normal;min-width:220px;max-width:460px;line-height:1.45}

@@ -101,6 +101,15 @@ export const SCHEMA = [
     product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
     qty DOUBLE PRECISION NOT NULL, PRIMARY KEY (product_id, ingredient_id))`,
+  // Zagotovka (yarim tayyor mahsulot): kotlet, sous, xamir… O'zi ham masalliq (omborda qoldig'i bo'ladi, taom texkartasiga
+  // qo'yiladi), lekin tarkibi bor: `yield` birlik zagotovka uchun `prep_lines` dagi masalliqlar ketadi.
+  `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS prep BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS yield DOUBLE PRECISION NOT NULL DEFAULT 1`,
+  `CREATE TABLE IF NOT EXISTS prep_lines (
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    prep_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+    qty DOUBLE PRECISION NOT NULL, PRIMARY KEY (prep_id, ingredient_id))`,
   `CREATE TABLE IF NOT EXISTS suppliers (
     id SERIAL PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name TEXT NOT NULL, phone TEXT, note TEXT, debt BIGINT NOT NULL DEFAULT 0,

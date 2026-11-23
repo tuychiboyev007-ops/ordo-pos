@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 155 ta)
+npm test         # API sinovlari (PGlite, 228 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -86,13 +86,44 @@ Muhim qoidalar:
 - Tushuntiruvchi video (UFO burger → ombordan ayrilishi) skriptlari:
   `~/Downloads/savdopro-main-2/_preview/promo-src/ordo/ufo-ombor/` (README bilan).
 
+## Analitika, to'lov turini tuzatish, zagotovka (2026-11-24)
+
+- **Hisobotlar → Analitika** (`GET /api/reports/analytics?from=&to=`, `reports.analytics`, `PAGES.analytics`): tanlangan
+  davr OLDINGI shu uzunlikdagi davr bilan solishtiriladi (`cur` / `old` — `periodMoney` dan, «Foyda» bilan bir xil raqam),
+  kunlar yonma-yon, hafta kuni × soat xaritasi (Toshkent vaqti; kunlik o'rtacha — o'sha hafta kuni davrda necha marta
+  kelganiga bo'linadi), toifalar, ABC (sinf — taom qo'shilishidan OLDINGI yig'ma ulushdan: 80% / 95%), o'sgan / pasaygan
+  (`gone` — oldin sotilgan, hozir yo'q) va sotilmagan taomlar (`dead`, oxirgi sotilgan kuni 180 kundan). Xulosa matni
+  brauzerda yig'iladi (`insights`). Davr 400 kundan oshmaydi.
+- **Chekda to'lov turini o'zgartirish** — `POST /api/order/pay-method {order_id, payment_id, method}` (`sync.changePayMethod`,
+  faqat rahbar, faqat YOPILGAN chek, `qarz`ga/dan emas). `orders.doc` va `payments.method` birga o'zgaradi, `ops`ga
+  `pay_method` yoziladi (buyurtma tarixida «Naqd → Karta»), smena yopilgan bo'lsa `expected_cash`/`summary` qayta
+  hisoblanadi. Panel: Buyurtmalar → chek → to'lov qatorida «O'zgartirish».
+- **Ombor → Inventarizatsiya** — menyuda alohida bo'lim (`PAGES.inv` → `PAGES.docs(m, 'inv')`); ilgari faqat «Kirim»
+  sahifasidagi tugma edi.
+- **Zagotovka (yarim tayyor mahsulot)** — kotlet, sous, xamir. U ham masalliq (`ingredients.prep = true`, `yield` — bir
+  partiyadan necha birlik chiqadi), tarkibi `prep_lines` da. Zagotovka ichida zagotovka BO'LMAYDI (`400 nested`).
+  - Narxi `lib/cost.js` `ingCosts()`: tarkibdagi masalliqlarning hozirgi narxidan `Σ(miqdor × narx) ÷ yield`; biror
+    masalliq narxi yo'q bo'lsa — o'zining o'rtacha narxi. `unitCosts()` (taom tannarxi) shundan foydalanadi.
+  - Sotuvda (`lib/stock.js` `applyNeeds`, `consume` shuni chaqiradi): omborda TAYYORI bor — o'shandan, yetmagan qismi
+    tarkibidagi masalliqlardan ayiriladi; zagotovka qoldig'i sotuv tufayli manfiyga tushmaydi. Egasi «Tayyorlash»ni
+    yuritmasa ham ombor to'g'ri kamayadi. Zagotovkalar har doim oddiy masalliqlardan OLDIN qulflanadi (deadlock bo'lmasin) —
+    `saveDoc` ham satrlarni shu tartibda yuradi.
+  - «Tayyorlash» — `POST /api/stock/doc {kind: 'tayyorlash', lines: [{ingredient_id, qty}]}` (`produce()`): masalliqlar
+    chiqadi, zagotovka shu masalliqlar narxida kiradi; hujjat odatdagidek bekor qilinadi. Moddiy hisobotda zagotovkaga —
+    «Kirim», masalliqqa — «Sarf» ustunida. Zagotovkani utilizatsiya qilish ham tayyoridan, yetmasa tarkibidan.
+  - Yo'llar: `GET /api/stock/preps`, `POST /api/stock/prep` (`id` oddiy masalliqniki bo'lsa — zagotovkaga aylanadi),
+    `POST /api/stock/prep/unset`. Panel: Ombor → Zagotovkalar (`PAGES.preps`, `prepForm`, `produceForm`); Masalliq
+    kartasida «Zagotovka qilish»; taom texkartasida oddiy masalliqdek tanlanadi («zagotovka» belgisi bilan).
+- **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
+  2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
+
 ## Kelishilgan qarorlar
 
 - Nomi va ko'rinishi: kichik harfli «ordo», to'q ko'k `#14213d` + qizil-to'q sariq `#e4572e`, logo «halqa va nuqta».
 - Kassa — «C — Tez kassa»: chapda chek + raqam tugmalari, o'ngda rangli toifa va taom kartalari, yashil TO'LOV;
   bir bosishda aralash to'lov (naqd + karta).
 - Bor: zal/olib ketish/yetkazish, chekni bo'lish va birlashtirish, qo'shimchalar, ofitsiant va oshxona ekrani,
-  ombor va texkarta, utilizatsiya, nasiya, rasxod, smena X/Z, foyda va moddiy hisobot.
+  ombor va texkarta, zagotovka, utilizatsiya, inventarizatsiya, nasiya, rasxod, smena X/Z, foyda, analitika va moddiy hisobot.
 - Hali yo'q: fiskal chek (keyingi bosqich), chek printeri bilan oynasiz chop etish va pul qutisi (printer
   kelganda), egasiga Telegram xabar (bot tokeni egasidan), `ordopos.uz` domeni (egasi oladi).
 - Ochiq xavfsizlik ishi: server kassa qurilmasidan kelgan narxga ishonadi (oflayn rejim uchun) — haqiqiy pul

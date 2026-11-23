@@ -2,9 +2,9 @@
  * Ombor: masalliqlar, texnologik karta, kirim / utilizatsiya / inventarizatsiya hujjatlari,
  * harakatlar, bugungi holat va moddiy hisobot.
  */
-import { unitCosts } from '../lib/cost.js';
+import { unitCosts, ingCosts } from '../lib/cost.js';
 import { json, fail, body, str, int, isDay, dayRange } from '../lib/http.js';
-import { moveStock, consume, q3 } from '../lib/stock.js';
+import { moveStock, consume, applyNeeds, produce, q3 } from '../lib/stock.js';
 import { shiftSummary } from '../../public/js/core.js';
 import { periodMoney } from './reports.js';
 import { currentShift, shiftMoves } from './sync.js';
@@ -13,12 +13,84 @@ const UNITS = ['kg', 'l', 'dona'];
 const n = (v) => Number(v) || 0;
 
 export async function ingredients(req, env, db, auth) {
-  const rows = await db.all(`SELECT id, name, unit, stock, cost, min_stock, grp FROM ingredients WHERE company_id = ? AND active = true ORDER BY grp NULLS LAST, name`, auth.c);
+  const rows = await db.all(`SELECT id, name, unit, stock, cost, min_stock, grp, prep, yield FROM ingredients WHERE company_id = ? AND active = true ORDER BY grp NULLS LAST, name`, auth.c);
   const used = await db.all(`SELECT r.ingredient_id, COUNT(*)::int AS n FROM recipes r JOIN products p ON p.id = r.product_id AND p.company_id = r.company_id
     WHERE r.company_id = ? AND p.active = true GROUP BY r.ingredient_id`, auth.c);
   const u = Object.fromEntries(used.map((x) => [x.ingredient_id, x.n]));
-  return json({ ok: true, ingredients: rows.map((r) => ({ ...r, stock: n(r.stock), cost: n(r.cost), min_stock: n(r.min_stock),
-    value: Math.round(n(r.stock) * n(r.cost)), dishes: u[r.id] || 0, low: n(r.stock) <= n(r.min_stock) })) });
+  // Zagotovkaning narxi — tarkibidan hisoblangani (hali tayyorlanmagan bo'lsa ham taom tannarxi ma'lum bo'lsin).
+  const ic = rows.some((r) => r.prep) ? await ingCosts(db, auth.c) : null;
+  return json({ ok: true, ingredients: rows.map((r) => { const cost = r.prep && ic ? ic.get(r.id) || n(r.cost) : n(r.cost); return { ...r, prep: !!r.prep, yield: n(r.yield) || 1, stock: n(r.stock), cost, min_stock: n(r.min_stock),
+    value: Math.round(n(r.stock) * (r.prep && n(r.cost) > 0 ? n(r.cost) : cost)), dishes: u[r.id] || 0, low: n(r.stock) <= n(r.min_stock) }; }) });
+}
+
+/** Zagotovkalar (yarim tayyor mahsulot) — tarkibi, 1 birlik tannarxi, tayyor qoldig'i. */
+export async function preps(req, env, db, auth) {
+  const c = auth.c;
+  const rows = await db.all('SELECT id, name, unit, stock, cost, min_stock, grp, yield FROM ingredients WHERE company_id = ? AND active = true AND prep = true ORDER BY name', c);
+  const lines = await db.all(`SELECT l.prep_id, l.ingredient_id, l.qty, i.name, i.unit, i.cost, i.stock FROM prep_lines l
+    JOIN ingredients i ON i.id = l.ingredient_id AND i.company_id = l.company_id WHERE l.company_id = ? ORDER BY i.name`, c);
+  const used = await db.all(`SELECT r.ingredient_id, COUNT(*)::int AS n FROM recipes r JOIN products p ON p.id = r.product_id AND p.company_id = r.company_id
+    WHERE r.company_id = ? AND p.active = true GROUP BY r.ingredient_id`, c);
+  const u = Object.fromEntries(used.map((x) => [x.ingredient_id, x.n]));
+  const ic = await ingCosts(db, c);
+  return json({ ok: true, preps: rows.map((r) => {
+    const ls = lines.filter((l) => l.prep_id === r.id).map((l) => ({ ingredient_id: l.ingredient_id, name: l.name, unit: l.unit, qty: n(l.qty), cost: n(l.cost), stock: n(l.stock), sum: Math.round(n(l.qty) * n(l.cost)) }));
+    const y = n(r.yield) || 1; const batch = ls.reduce((s, l) => s + l.sum, 0);
+    return { id: r.id, name: r.name, unit: r.unit, grp: r.grp, yield: y, stock: n(r.stock), min_stock: n(r.min_stock), lines: ls, batch_cost: batch,
+      cost: Math.round(ic.get(r.id) || 0), no_cost: ls.filter((l) => !(l.cost > 0)).length, dishes: u[r.id] || 0, low: n(r.stock) <= n(r.min_stock) && n(r.min_stock) > 0 };
+  }) });
+}
+
+/**
+ * Zagotovkani saqlash: nomi, o'lchovi, chiqishi (`yield` — shu tarkibdan necha birlik chiqadi) va tarkibi.
+ * `id` oddiy masalliqniki bo'lsa — u zagotovkaga aylanadi (qoldig'i va texkartalardagi o'rni saqlanadi).
+ */
+export async function savePrep(req, env, db, auth) {
+  const b = await body(req); const c = auth.c; const id = int(b.id, 0);
+  const name = str(b.name, 80); if (!name) return fail(400, 'need_name', 'Nomi kerak');
+  const unit = UNITS.includes(b.unit) ? b.unit : 'kg';
+  const y = q3(b.yield); if (!(y > 0)) return fail(400, 'bad_yield', 'Shu tarkibdan qancha chiqishini yozing');
+  const min = Math.max(0, q3(b.min_stock)); const grp = str(b.grp, 40);
+  const lines = Array.isArray(b.lines) ? b.lines.slice(0, 60) : [];
+  if (!lines.length) return fail(400, 'empty', 'Tarkibini yozing — zagotovka nimadan tayyorlanadi');
+  const dup = await db.first('SELECT id FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?) AND id <> ?', c, name, id);
+  if (dup) return fail(409, 'duplicate', 'Bunday nomli masalliq yoki zagotovka bor');
+  const seen = new Set();
+  for (const l of lines) {
+    const iid = int(l.ingredient_id);
+    if (!(q3(l.qty) > 0)) return fail(400, 'bad_qty', 'Miqdor 0 dan katta bo\'lishi kerak');
+    if (iid === id) return fail(400, 'self', 'Zagotovka o\'zining tarkibida bo\'lmaydi');
+    if (seen.has(iid)) return fail(400, 'duplicate_line', 'Bir masalliq ikki marta yozilgan');
+    seen.add(iid);
+    const ing = await db.first('SELECT id, prep FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, iid);
+    if (!ing) return fail(400, 'bad_ingredient', 'Masalliq topilmadi');
+    if (ing.prep) return fail(400, 'nested', 'Zagotovka tarkibiga boshqa zagotovka qo\'yilmaydi — oddiy masalliqlarni yozing');
+  }
+  if (id) {
+    const ex = await db.first('SELECT id, unit FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, id);
+    if (!ex) return fail(404, 'not_found');
+    const moved = await db.first('SELECT id FROM stock_moves WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id);
+    if (moved && ex.unit !== unit) return fail(409, 'unit_locked', 'Harakati bor masalliqning o\'lchov birligi o\'zgarmaydi');
+    if (await db.first('SELECT prep_id FROM prep_lines WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id)) return fail(400, 'nested', 'Bu masalliq boshqa zagotovka tarkibida turibdi — avval u yerdan olib tashlang');
+  }
+  const pid = await db.tx(async (tx) => {
+    let rid = id;
+    if (id) await tx.run('UPDATE ingredients SET name = ?, unit = ?, min_stock = ?, grp = ?, prep = true, yield = ? WHERE company_id = ? AND id = ?', name, unit, min, grp, y, c, id);
+    else rid = (await tx.first('INSERT INTO ingredients (company_id, name, unit, min_stock, grp, prep, yield) VALUES (?, ?, ?, ?, ?, true, ?) RETURNING id', c, name, unit, min, grp, y)).id;
+    await tx.run('DELETE FROM prep_lines WHERE company_id = ? AND prep_id = ?', c, rid);
+    for (const l of lines) await tx.run('INSERT INTO prep_lines (company_id, prep_id, ingredient_id, qty) VALUES (?, ?, ?, ?)', c, rid, int(l.ingredient_id), q3(l.qty));
+    return rid;
+  });
+  return json({ ok: true, id: pid });
+}
+
+/** Zagotovkani yana oddiy masalliqqa qaytarish (tarkibi o'chadi, qoldig'i va texkartalardagi o'rni qoladi). */
+export async function unprep(req, env, db, auth) {
+  const b = await body(req); const c = auth.c; const id = int(b.id);
+  const r = await db.all('UPDATE ingredients SET prep = false, yield = 1 WHERE company_id = ? AND id = ? AND prep = true RETURNING id', c, id);
+  if (!r.length) return fail(404, 'not_found');
+  await db.run('DELETE FROM prep_lines WHERE company_id = ? AND prep_id = ?', c, id);
+  return json({ ok: true });
 }
 
 export async function saveIngredient(req, env, db, auth) {
@@ -45,6 +117,7 @@ export async function removeIngredient(req, env, db, auth) {
   const r = await db.all('UPDATE ingredients SET active = false WHERE company_id = ? AND id = ? RETURNING id', auth.c, int(b.id));
   if (!r.length) return fail(404, 'not_found');
   await db.run('DELETE FROM recipes WHERE company_id = ? AND ingredient_id = ?', auth.c, int(b.id));
+  await db.run('DELETE FROM prep_lines WHERE company_id = ? AND (ingredient_id = ? OR prep_id = ?)', auth.c, int(b.id), int(b.id));
   return json({ ok: true });
 }
 
@@ -55,8 +128,10 @@ export async function recipe(req, env, db, auth) {
   if (!p) return fail(404, 'not_found');
   const lines = await db.all(`SELECT r.ingredient_id, r.qty, i.name, i.unit, i.cost FROM recipes r JOIN ingredients i ON i.id = r.ingredient_id AND i.company_id = r.company_id
     WHERE r.company_id = ? AND r.product_id = ? ORDER BY i.name`, auth.c, pid);
-  const cost = Math.round(lines.reduce((s, l) => s + n(l.qty) * n(l.cost), 0));
-  return json({ ok: true, product: { ...p, price: n(p.price) }, lines: lines.map((l) => ({ ...l, qty: n(l.qty), cost: n(l.cost) })), cost });
+  const ic = await ingCosts(db, auth.c);
+  const out = lines.map((l) => ({ ...l, qty: n(l.qty), cost: ic.get(l.ingredient_id) ?? n(l.cost) }));
+  const cost = Math.round(out.reduce((s, l) => s + l.qty * l.cost, 0));
+  return json({ ok: true, product: { ...p, price: n(p.price) }, lines: out, cost });
 }
 
 export async function saveRecipe(req, env, db, auth) {
@@ -91,7 +166,7 @@ export async function recipeCosts(req, env, db, auth) {
  */
 export async function saveDoc(req, env, db, auth) {
   const b = await body(req); const c = auth.c;
-  const kind = ['kirim', 'utilizatsiya', 'inventar'].includes(b.kind) ? b.kind : null;
+  const kind = ['kirim', 'utilizatsiya', 'inventar', 'tayyorlash'].includes(b.kind) ? b.kind : null;
   if (!kind) return fail(400, 'bad_kind');
   const lines = Array.isArray(b.lines) ? b.lines.slice(0, 300) : [];
   if (!lines.length) return fail(400, 'empty', 'Hujjatda satr yo\'q');
@@ -110,7 +185,10 @@ export async function saveDoc(req, env, db, auth) {
       if (!(q3(l.qty) > 0)) return fail(400, 'bad_qty', 'Miqdor noto\'g\'ri');
       continue;
     }
-    if (!(await db.first('SELECT id FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, int(l.ingredient_id)))) return fail(400, 'bad_ingredient', 'Masalliq topilmadi');
+    const ing = await db.first('SELECT id, name, prep, (SELECT COUNT(*)::int FROM prep_lines pl WHERE pl.company_id = i.company_id AND pl.prep_id = i.id) AS comp FROM ingredients i WHERE i.company_id = ? AND i.id = ? AND i.active = true', c, int(l.ingredient_id));
+    if (!ing) return fail(400, 'bad_ingredient', 'Masalliq topilmadi');
+    l.prep = !!ing.prep && ing.comp > 0;
+    if (kind === 'tayyorlash' && !l.prep) return fail(400, 'not_prep', `${ing.name} — zagotovka emas yoki tarkibi yozilmagan`);
     if (kind === 'inventar' ? !(q3(l.qty) >= 0) : !(q3(l.qty) > 0)) return fail(400, 'bad_qty', 'Miqdor noto\'g\'ri');
     if (kind === 'kirim' && !(Number(l.price) >= 0)) return fail(400, 'bad_price', 'Narx noto\'g\'ri');
   }
@@ -124,8 +202,12 @@ export async function saveDoc(req, env, db, auth) {
     const doc = await tx.first(`INSERT INTO stock_docs (company_id, kind, supplier_id, reason, note, pay_from, user_id, at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, c, kind, supplier?.id || null, reason, str(b.note, 300), payFrom, auth.u || null, at);
     let total = 0;
+    // Zagotovkalar oddiy masalliqlardan oldin, keyin raqam tartibida — sotuv bilan bir xil qulf tartibi.
+    lines.sort((a, b) => (a.prep ? 0 : 1) - (b.prep ? 0 : 1) || int(a.ingredient_id, 0) - int(b.ingredient_id, 0));
     for (const l of lines) {
-      if (kind === 'kirim') {
+      if (kind === 'tayyorlash') {
+        total += await produce(tx, c, int(l.ingredient_id), q3(l.qty), { doc_id: doc.id, user_id: auth.u, at });
+      } else if (kind === 'kirim') {
         // narx — 1 birlik uchun; summa yaxlitlanib jamlanadi
         const q = q3(l.qty); const price = Number(l.price);
         await moveStock(tx, c, { ingredient_id: int(l.ingredient_id), kind, qty: q, price, doc_id: doc.id, user_id: auth.u, at });
@@ -133,6 +215,9 @@ export async function saveDoc(req, env, db, auth) {
       } else if (kind === 'utilizatsiya') {
         if (l.product_id) {
           await consume(tx, c, [{ product_id: int(l.product_id), qty: q3(l.qty) }], { kind, doc_id: doc.id, user_id: auth.u, at });
+        } else if (l.prep) {
+          // Tayyori bo'lsa o'shandan, yetmagani tarkibidagi masalliqlardan (sotuvdagi kabi)
+          await applyNeeds(tx, c, new Map([[`0:${int(l.ingredient_id)}`, q3(l.qty)]]), { kind, doc_id: doc.id, user_id: auth.u, at });
         } else {
           const r = await moveStock(tx, c, { ingredient_id: int(l.ingredient_id), kind, qty: -q3(l.qty), doc_id: doc.id, user_id: auth.u, at });
           total += Math.round(q3(l.qty) * (r?.unit || 0));
@@ -143,7 +228,7 @@ export async function saveDoc(req, env, db, auth) {
         if (diff) await moveStock(tx, c, { ingredient_id: int(l.ingredient_id), kind, qty: diff, doc_id: doc.id, user_id: auth.u, at, note: `sanoq: ${q3(l.qty)}` });
       }
     }
-    if (kind !== 'kirim') {
+    if (kind !== 'kirim' && kind !== 'tayyorlash') {
       const s = await tx.first('SELECT COALESCE(SUM(qty * cost), 0)::float8 AS v FROM stock_moves WHERE company_id = ? AND doc_id = ?', c, doc.id);
       total = Math.round(Math.abs(n(s.v)));
     }
@@ -260,7 +345,11 @@ export async function material(req, env, db, auth) {
     const s0 = start[i.id] || { q: 0, v: 0 }; const s1 = end[i.id] || { q: 0, v: 0 };
     if (!i.active && !Object.keys(m).length && !s1.q) continue;
     const g = (k) => m[k] || { q: 0, v: 0 };
-    const kirim = g('kirim'); const sotuv = g('sotuv'); const util = g('utilizatsiya'); const inv = g('inventar');
+    // «Tayyorlash»: zagotovkaga — kirim, tarkibidagi masalliqqa — sarf (zagotovkaga ketdi).
+    const made = g('tayyorlash');
+    const kirim = { q: g('kirim').q + Math.max(0, made.q), v: g('kirim').v + Math.max(0, made.v) };
+    const sotuv = { q: g('sotuv').q + Math.min(0, made.q), v: g('sotuv').v + Math.min(0, made.v) };
+    const util = g('utilizatsiya'); const inv = g('inventar');
     const other = { q: g('bekor').q + g('qaytish').q + g('tuzatish').q, v: g('bekor').v + g('qaytish').v + g('tuzatish').v };
     const row = {
       id: i.id, name: i.name, unit: i.unit, grp: i.grp,
@@ -300,8 +389,8 @@ export async function today(req, env, db, auth) {
   if (!isDay(day)) return fail(400, 'bad_day', 'Sana noto\'g\'ri');
   const [f, t] = dayRange(day, day); const c = auth.c;
   const rows = await db.all(`SELECT i.id, i.name, i.unit, i.stock, i.cost, i.min_stock,
-    ROUND(COALESCE(SUM(m.qty) FILTER (WHERE m.kind = 'kirim'), 0)::numeric, 3)::float8 AS in_q, COALESCE(SUM(m.qty * m.cost) FILTER (WHERE m.kind = 'kirim'), 0)::float8 AS in_v,
-    ROUND(COALESCE(-SUM(m.qty) FILTER (WHERE m.kind = 'sotuv'), 0)::numeric, 3)::float8 AS used_q, COALESCE(-SUM(m.qty * m.cost) FILTER (WHERE m.kind = 'sotuv'), 0)::float8 AS used_v,
+    ROUND(COALESCE(SUM(m.qty) FILTER (WHERE m.kind = 'kirim' OR (m.kind = 'tayyorlash' AND m.qty > 0)), 0)::numeric, 3)::float8 AS in_q, COALESCE(SUM(m.qty * m.cost) FILTER (WHERE m.kind = 'kirim' OR (m.kind = 'tayyorlash' AND m.qty > 0)), 0)::float8 AS in_v,
+    ROUND(COALESCE(-SUM(m.qty) FILTER (WHERE m.kind = 'sotuv' OR (m.kind = 'tayyorlash' AND m.qty < 0)), 0)::numeric, 3)::float8 AS used_q, COALESCE(-SUM(m.qty * m.cost) FILTER (WHERE m.kind = 'sotuv' OR (m.kind = 'tayyorlash' AND m.qty < 0)), 0)::float8 AS used_v,
     ROUND(COALESCE(-SUM(m.qty) FILTER (WHERE m.kind = 'utilizatsiya'), 0)::numeric, 3)::float8 AS waste_q, COALESCE(-SUM(m.qty * m.cost) FILTER (WHERE m.kind = 'utilizatsiya'), 0)::float8 AS waste_v
     FROM ingredients i LEFT JOIN stock_moves m ON m.ingredient_id = i.id AND m.company_id = i.company_id AND m.at >= ? AND m.at < ?
     WHERE i.company_id = ? AND i.active = true GROUP BY i.id ORDER BY used_v DESC, i.name`, f, t, c);
