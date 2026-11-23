@@ -38,6 +38,8 @@ node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li
 `seed.local.json` (Mazza egasi email/paroli, PIN'lar — `src/lib/mazza.js` shundan o'qiydi) va `docs/LOCAL.md`
 gitignore'da, faqat egasining kompyuterida. Parol/PIN'ni kodga, commitga yoki chatga yozmang.
 Namuna restoran: `demo@ordo.uz` / `ordo2026` (ochiq, sinov uchun).
+Egasining kirish emaili/parolini almashtirish: `node dev/egasi-kirish.mjs` — egasi O'ZI ishga tushiradi va parolni
+o'zi yozadi (`--sinov` — yozmasdan ko'rsatadi). Claude ishlab turgan tizimga parol kiritmaydi.
 
 ## Tuzilish
 
