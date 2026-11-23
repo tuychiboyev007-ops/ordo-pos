@@ -20,7 +20,7 @@ const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 /** Boshqaruv — bo'limlar va ularning sahifalari; hammasi yon panelda doim ko'rinib turadi. */
 const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
-  ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['analytics', 'Savdo analitikasi'], ['diag', 'Diagnostika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
+  ['rep', 'chart', 'Hisobotlar', [['report', 'Umumiy hisobot'], ['profit', 'Foyda'], ['analytics', 'Savdo analitikasi'], ['diag', 'Diagnostika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
   ['stock', 'box', 'Ombor', [['stock', 'Elementlar'], ['preps', 'Zagotovkalar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
   ['menu', 'list', 'Menyu', [['menu', 'Menyu'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
   ['money', 'wallet', 'Pul', [['expenses', 'Rasxod'], ['debts', 'Nasiya'], ['suppliers', 'Yetkazib beruvchilar']]],
@@ -210,7 +210,7 @@ PAGES.dash = async (m) => {
     + (nc.length ? `<div class="card" style="border-color:#f0cf86;background:#fffbf1;padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <span>${icon('alert')} <b>${nc.length} ta sotilgan taomning tannarxi noma'lum</b> (${esc(nc.slice(0, 4).map((i) => i.name).join(', '))}${nc.length > 4 ? '…' : ''}) — foyda haqiqiydan ko'p ko'rinyapti. Elementlar kirim qilinsa yoki tannarx yozilsa, to'g'ri bo'ladi.</span>
         <span class="grow"></span><button class="btn sm" data-go="docs">${icon('truckin')}Kirim qilish</button><button class="btn sm" data-go="menu">Taomlar</button></div>` : '')
-    + `<div class="quick noprint"><button class="btn sm" data-go="menu">${icon('plus')}Menyuga taom yoki tovar</button><button class="btn sm" data-go="stock">${icon('plus')}Element</button><button class="btn sm" data-go="docs">${icon('truckin')}Kirim</button><button class="btn sm" data-go="preps">${icon('flame')}Zagotovka</button><button class="btn sm" data-go="analytics">${icon('chart')}Savdo analitikasi</button><button class="btn sm" data-go="diag">${icon('alert')}Diagnostika</button></div>
+    + `<div class="quick noprint"><button class="btn sm" data-go="menu">${icon('plus')}Menyuga taom yoki tovar</button><button class="btn sm" data-go="stock">${icon('plus')}Element</button><button class="btn sm" data-go="docs">${icon('truckin')}Kirim</button><button class="btn sm" data-go="preps">${icon('flame')}Zagotovka</button><button class="btn sm" data-go="analytics">${icon('chart')}Savdo analitikasi</button><button class="btn sm" data-go="diag">${icon('alert')}Diagnostika</button><button class="btn sm" data-go="report">${icon('receipt')}Umumiy hisobot</button></div>
     <div class="stats">${stat('Savdo', sum(s.total), `${s.orders} ta buyurtma`, 'accent')}${stat('O\'rtacha chek', sum(s.avg), `${s.guests} mehmon`)}
       ${stat('Tannarx (texkarta)', sum(d.food_cost), s.total ? `savdoning ${pct(d.food_cost, s.total)}%` : '')}${stat('Rasxod', sum(d.expenses))}
       ${stat('Utilizatsiya', sum(d.waste))}${stat('Taxminiy foyda', `<span class="${d.profit < 0 ? 'neg' : ''}">${sum(d.profit)}</span>`, nc.length ? 'tannarxi noma\'lum taomlar hisobga olinmagan' : 'savdo − tannarx − rasxod − utilizatsiya')}</div>
@@ -832,6 +832,121 @@ async function docView(id) {
     }),
   });
 }
+
+// =================== Umumiy hisobot ===================
+/**
+ * Bitta sahifada butun davr: asosiy ko'rsatkichlar (oldingi davr bilan), foyda va zarar, to'lovlar, smenalar, xodimlar,
+ * taomlar, nazorat, ombor va qarzlar. Raqamlar boshqa hisobotlar bergan manbalardan olinadi (analitika, savdo, rasxod,
+ * moddiy hisobot) — shuning uchun ular bilan aynan bir xil. Chop etish — brauzerning «PDF sifatida saqlash»i bilan.
+ */
+PAGES.report = async (m) => {
+  const q = rq();
+  const a = await S('/api/reports/analytics?' + q);
+  const sm = await S('/api/reports/summary?' + q);
+  const ex = await S('/api/expenses?' + q);
+  const mt = await S('/api/reports/material?' + q);
+  const shAll = (await S('/api/reports/shifts')).shifts;
+  const debts = await S('/api/debts');
+  const sups = await S('/api/suppliers');
+  const c = a.cur; const o = a.old;
+  const U = Object.fromEntries((A.boot?.staff || []).map((u) => [u.id, u.name]));
+  const localDay = (at) => new Date(new Date(at).getTime() + 5 * 3600e3).toISOString().slice(0, 10);
+  const shifts = shAll.filter((x) => { const d0 = localDay(x.opened_at); return d0 >= A.range.from && d0 <= A.range.to; }).reverse();
+  const p1 = (v) => String(v).replace('.', ',') + '%';
+  const share = (v, t) => (t ? p1(Math.round((v / t) * 1000) / 10) : '');
+  const cmp = (label, now, was, fmt = sum, inverse = false, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="r"><b>${fmt(now)}</b></td><td class="r dim">${fmt(was)}</td><td class="r">${delta(now, was, inverse)}</td></tr>`;
+  const int = (v) => String(v);
+  const sec = (title, hint, body) => `<section class="rep-sec"><h2>${title}${hint ? `<small>${hint}</small>` : ''}</h2>${body}</section>`;
+  const none = (t) => `<div class="dim" style="padding:6px 0 2px">${t}</div>`;
+  const stockT = mt.totals; const low = mt.rows.filter((r) => r.low).length; const neg = mt.rows.filter((r) => r.close_q < 0).length;
+  const shiftDiff = shifts.reduce((s_, x) => s_ + (x.counted_cash != null && x.expected_cash != null ? x.counted_cash - x.expected_cash : 0), 0);
+  const debtors = debts.customers.filter((x) => x.debt > 0); const owed = sups.suppliers.filter((x) => x.debt > 0);
+  const top = a.items.slice(0, 15);
+  const name = A.boot?.settings?.name || A.boot?.company?.name || '';
+
+  m.innerHTML = head('Umumiy hisobot', `${rlabel()} · butun davr bitta sahifada`, `<button class="btn" id="xl">${icon('list')}Excel</button><button class="btn primary" id="pr">${icon('print')}Chop etish / PDF</button>`)
+    + rangeBar(() => show('report'))
+    + `<div class="rep mt"><div class="rep-head"><div><div class="rn">${esc(name)}</div><h1>Umumiy hisobot</h1><div class="dim">${rlabel()} · solishtirish: ${dm(a.prev.from)}${a.prev.from === a.prev.to ? '' : ' — ' + dm(a.prev.to)}</div></div>
+        <div class="rep-meta">Tuzildi: ${dateTime(new Date())}<br>${esc(A.user?.name || '')}</div></div>
+      <div class="rep-kpis">${[['Savdo', sum(c.revenue), delta(c.revenue, o.revenue)], ['Buyurtmalar', c.orders, delta(c.orders, o.orders)], ['O\'rtacha chek', sum(c.avg_check), delta(c.avg_check, o.avg_check)],
+        ['Yalpi foyda', sum(c.gross), `marja ${p1(c.margin)}`], ['Sof foyda', `<span class="${c.net < 0 ? 'neg' : ''}">${sum(c.net)}</span>`, delta(c.net, o.net)]].map(([l, v, x]) => `<div><span>${l}</span><b>${v}</b><i>${x || '&nbsp;'}</i></div>`).join('')}</div>
+
+      ${sec('1. Asosiy ko\'rsatkichlar', 'oldingi shu uzunlikdagi davr bilan', `<table class="tbl"><thead><tr><th>Ko'rsatkich</th><th class="r">Bu davr</th><th class="r">Oldingi davr</th><th class="r">O'zgarish</th></tr></thead><tbody>
+        ${cmp('Savdo (tushum)', c.revenue, o.revenue)}${cmp('Buyurtmalar soni', c.orders, o.orders, int)}${cmp('O\'rtacha chek', c.avg_check, o.avg_check)}${cmp('Mehmonlar', c.guests, o.guests, int)}
+        ${cmp('Sotilgan taomlar soni', c.items_qty, o.items_qty, (v) => String(v).replace('.', ','))}${cmp('Chegirmalar', c.discount, o.discount, sum, true)}${cmp('Xizmat haqi', c.service, o.service)}
+        ${cmp('Tannarx', c.cost, o.cost, sum, true)}${cmp('Yalpi foyda', c.gross, o.gross)}${cmp('Rasxodlar', c.expenses, o.expenses, sum, true)}${cmp('Utilizatsiya', c.waste, o.waste, sum, true)}
+        ${cmp('Sof foyda', c.net, o.net, sum, false, 'total')}</tbody></table>`)}
+
+      ${sec('2. Foyda va zarar', '', `<table class="tbl pl"><tbody>
+        <tr><td>Savdo <span class="dim">— chegirmadan keyin, xizmat haqi bilan</span></td><td class="r"><b>${sum(c.revenue)}</b></td><td class="r dim">100%</td></tr>
+        <tr><td>− Sotilgan taomlar tannarxi</td><td class="r">${sum(c.cost)}</td><td class="r dim">${share(c.cost, c.revenue)}</td></tr>
+        <tr class="total"><td>= Yalpi foyda</td><td class="r">${sum(c.gross)}</td><td class="r">${share(c.gross, c.revenue)}</td></tr>
+        ${ex.by_category.length ? ex.by_category.map((x) => `<tr><td>− Rasxod: ${esc(x.category)} <span class="dim">· ${x.n} ta</span></td><td class="r">${sum(x.sum)}</td><td class="r dim">${share(x.sum, c.revenue)}</td></tr>`).join('') : '<tr><td>− Rasxodlar</td><td class="r">0</td><td></td></tr>'}
+        <tr><td>− Utilizatsiya <span class="dim">— buzilgan, yaroqsiz mahsulot</span></td><td class="r">${sum(c.waste)}</td><td class="r dim">${share(c.waste, c.revenue)}</td></tr>
+        <tr class="total grand"><td>= Sof foyda</td><td class="r ${c.net < 0 ? 'neg' : ''}">${sum(c.net)}</td><td class="r">${share(c.net, c.revenue)}</td></tr></tbody></table>
+        ${c.no_cost ? `<p class="hint" style="margin-top:8px">${c.no_cost} ta sotilgan taomning tannarxi noma'lum — ular 0 deb olingan, foyda aslidan ko'p ko'rinishi mumkin.</p>` : ''}`)}
+
+      <div class="rep-two">${sec('3. To\'lov turlari', '', a.methods.length ? `<table class="tbl"><thead><tr><th>Turi</th><th class="r">Soni</th><th class="r">Summa</th><th class="r">Ulushi</th></tr></thead><tbody>
+        ${a.methods.map((r) => `<tr><td>${esc(PAY_NAMES[r.method] || r.method)}</td><td class="r">${r.n}</td><td class="r"><b>${sum(r.sum)}</b></td><td class="r dim">${p1(r.share)}</td></tr>`).join('')}</tbody></table>` : none('To\'lov yo\'q'))}
+        ${sec('4. Buyurtma turlari', '', a.types.length ? `<table class="tbl"><thead><tr><th>Turi</th><th class="r">Soni</th><th class="r">Summa</th><th class="r">O'rtacha chek</th></tr></thead><tbody>
+        ${a.types.map((r) => `<tr><td>${esc(TYPE_NAMES[r.type] || r.type)}</td><td class="r">${r.n}</td><td class="r"><b>${sum(r.sum)}</b></td><td class="r">${sum(r.avg)}</td></tr>`).join('')}</tbody></table>` : none('Buyurtma yo\'q'))}</div>
+
+      ${sec('5. Kassa va smenalar', mt.money.cash != null ? `hozir kassada: ${sum(mt.money.cash)} so'm` : 'smena hozir yopiq', shifts.length ? `<table class="tbl"><thead><tr><th>№</th><th>Ochildi</th><th>Yopildi</th><th>Kassir</th><th class="r">Savdo</th><th class="r">Naqd</th><th class="r">Kassada bo'lishi kerak</th><th class="r">Sanaldi</th><th class="r">Farq</th></tr></thead><tbody>
+        ${shifts.map((x) => { const y = x.summary || {}; const df = x.counted_cash != null && x.expected_cash != null ? x.counted_cash - x.expected_cash : null;
+          return `<tr><td><b>${esc(x.number ?? '')}</b></td><td>${dateTime(x.opened_at)}</td><td>${x.closed_at ? dateTime(x.closed_at) : 'ochiq'}</td><td>${esc(U[x.opened_by] || '')}</td><td class="r">${y.total != null ? sum(y.total) : ''}</td><td class="r">${y.by_method ? sum(y.by_method.naqd) : ''}</td>
+            <td class="r">${x.expected_cash != null ? sum(x.expected_cash) : ''}</td><td class="r">${x.counted_cash != null ? sum(x.counted_cash) : ''}</td><td class="r ${df < 0 ? 'neg' : df > 0 ? 'pos' : ''}">${df == null ? '' : sum(df)}</td></tr>`; }).join('')}
+        <tr class="total"><td colspan="8">Jami farq <span class="dim" style="font-weight:400">— manfiy bo'lsa kassada kamomad</span></td><td class="r ${shiftDiff < 0 ? 'neg' : ''}">${sum(shiftDiff)}</td></tr></tbody></table>` : none('Bu davrda ochilgan smena yo\'q'))}
+
+      ${sec('6. Xodimlar', '', a.waiters.length ? `<table class="tbl"><thead><tr><th>Xodim</th><th class="r">Buyurtma</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">O'rtacha chek</th><th class="r">Bekor qilgan</th><th class="r">Chegirma</th></tr></thead><tbody>
+        ${a.waiters.map((w) => `<tr><td>${esc(w.name)}${w.role ? ` <span class="dim">· ${esc(ROLE_NAMES[w.role] || w.role)}</span>` : ''}</td><td class="r">${w.orders}</td><td class="r"><b>${sum(w.sum)}</b></td><td class="r dim">${p1(w.share)}</td><td class="r">${sum(w.avg)}</td>
+          <td class="r">${w.cancel_n ? `${w.cancel_n} ta · ${sum(w.cancel_sum)}` : '—'}</td><td class="r">${w.discount ? sum(w.discount) : '—'}</td></tr>`).join('')}</tbody></table>` : none('Ma\'lumot yo\'q'))}
+
+      <div class="rep-two">${sec('7. Toifalar', '', a.categories.length ? `<table class="tbl"><thead><tr><th>Toifa</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">Foyda</th></tr></thead><tbody>
+        ${a.categories.map((x) => `<tr><td>${esc(x.name)}</td><td class="r"><b>${sum(x.revenue)}</b></td><td class="r dim">${p1(x.share)}</td><td class="r">${sum(x.profit)}</td></tr>`).join('')}</tbody></table>` : none('Ma\'lumot yo\'q'))}
+        ${sec('8. Nazorat', '', `<table class="tbl"><tbody>
+        <tr><td>Bekor qilingan taomlar <span class="dim">— oshxonaga ketgandan keyin</span></td><td class="r ${sm.totals.cancelled_sum ? 'neg' : ''}"><b>${sm.cancels.length} ta · ${sum(sm.totals.cancelled_sum)}</b></td></tr>
+        <tr><td>Bekor qilingan buyurtmalar</td><td class="r"><b>${sm.totals.voids} ta</b></td></tr>
+        <tr><td>Chegirmalar</td><td class="r"><b>${sm.discounts.length} ta · ${sum(c.discount)}</b></td></tr>
+        <tr><td>Utilizatsiya</td><td class="r"><b>${sum(c.waste)}</b></td></tr>
+        <tr><td>Xodimlar olgan <span class="dim">— ish haqi, avans</span></td><td class="r"><b>${sum(c.staff)}</b></td></tr>
+        <tr><td>Kassa farqi (smenalar)</td><td class="r ${shiftDiff < 0 ? 'neg' : ''}"><b>${sum(shiftDiff)}</b></td></tr></tbody></table>`)}</div>
+
+      ${sec('9. Eng ko\'p sotilgan taomlar', `${a.items.length} ta taomdan birinchi ${top.length} tasi`, top.length ? `<table class="tbl"><thead><tr><th></th><th>Taom</th><th>Toifa</th><th class="r">Soni</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">Foyda</th><th class="r">Marja</th></tr></thead><tbody>
+        ${top.map((i, k) => `<tr><td class="dim">${k + 1}</td><td><b>${esc(i.name)}</b></td><td class="dim">${esc(i.category || '')}</td><td class="r">${qty(i.qty, i.unit === 'kg' ? 'kg' : '')}</td><td class="r">${sum(i.revenue)}</td><td class="r dim">${p1(i.share)}</td>
+          <td class="r">${i.no_cost ? '—' : sum(i.profit)}</td><td class="r dim">${i.no_cost ? '' : p1(i.margin)}</td></tr>`).join('')}</tbody></table>` : none('Bu davrda sotuv yo\'q'))}
+
+      <div class="rep-two">${sec('10. Ombor', 'elementlar qiymati, tannarxda', `<table class="tbl"><tbody>
+        <tr><td>Davr boshida</td><td class="r">${sum(stockT.open_v)}</td></tr><tr><td>+ Kirim</td><td class="r">${sum(stockT.in_v)}</td></tr><tr><td>− Sarf (taomlarga)</td><td class="r">${sum(stockT.used_v)}</td></tr>
+        <tr><td>− Utilizatsiya</td><td class="r">${sum(stockT.waste_v)}</td></tr><tr><td>± Inventarizatsiya farqi</td><td class="r ${stockT.inv_v < 0 ? 'neg' : ''}">${sum(stockT.inv_v)}</td></tr>
+        <tr class="total"><td>= Davr oxirida</td><td class="r">${sum(stockT.close_v)}</td></tr>
+        <tr><td>Kam qolgan elementlar</td><td class="r">${low} ta</td></tr><tr><td>Manfiy qoldiq <span class="dim">— kirim kiritilmagan</span></td><td class="r ${neg ? 'neg' : ''}">${neg} ta</td></tr></tbody></table>`)}
+        ${sec('11. Qarzlar', 'hozirgi holat', `<table class="tbl"><tbody>
+        <tr class="total"><td>Mijozlar nasiyasi <span class="dim" style="font-weight:400">— ${debtors.length} ta mijoz</span></td><td class="r">${sum(debts.total)}</td></tr>
+        ${debtors.slice(0, 6).map((x) => `<tr><td class="dim" style="padding-left:22px">${esc(x.name || x.phone || '—')}</td><td class="r">${sum(x.debt)}</td></tr>`).join('')}
+        <tr class="total"><td>Yetkazib beruvchilarga qarzimiz <span class="dim" style="font-weight:400">— ${owed.length} ta</span></td><td class="r">${sum(sups.total)}</td></tr>
+        ${owed.slice(0, 6).map((x) => `<tr><td class="dim" style="padding-left:22px">${esc(x.name)}</td><td class="r">${sum(x.debt)}</td></tr>`).join('')}</tbody></table>`)}</div>
+
+      <div class="rep-sign"><span>Rahbar: ____________________</span><span>Imzo: ____________________</span><span>Sana: ${date(new Date())}</span></div></div>`;
+
+  $('#pr').onclick = () => window.print();
+  $('#xl').onclick = () => {
+    const R = []; const S_ = (t) => { R.push([]); R.push([t]); };
+    R.push([name, 'Umumiy hisobot', `${A.range.from} — ${A.range.to}`]);
+    S_('Asosiy ko\'rsatkichlar'); R.push(['Ko\'rsatkich', 'Bu davr', 'Oldingi davr']);
+    for (const [l, k] of [['Savdo', 'revenue'], ['Buyurtmalar soni', 'orders'], ['O\'rtacha chek', 'avg_check'], ['Mehmonlar', 'guests'], ['Chegirmalar', 'discount'], ['Xizmat haqi', 'service'], ['Tannarx', 'cost'], ['Yalpi foyda', 'gross'], ['Rasxodlar', 'expenses'], ['Utilizatsiya', 'waste'], ['Sof foyda', 'net']]) R.push([l, c[k], o[k]]);
+    S_('Rasxodlar'); R.push(['Turi', 'Soni', 'Summa']); for (const x of ex.by_category) R.push([x.category, x.n, x.sum]);
+    S_('To\'lov turlari'); R.push(['Turi', 'Soni', 'Summa']); for (const r of a.methods) R.push([PAY_NAMES[r.method] || r.method, r.n, r.sum]);
+    S_('Buyurtma turlari'); R.push(['Turi', 'Soni', 'Summa']); for (const r of a.types) R.push([TYPE_NAMES[r.type] || r.type, r.n, r.sum]);
+    S_('Smenalar'); R.push(['№', 'Ochildi', 'Yopildi', 'Kassir', 'Savdo', 'Kassada bo\'lishi kerak', 'Sanaldi', 'Farq']);
+    for (const x of shifts) R.push([x.number ?? '', dateTime(x.opened_at), x.closed_at ? dateTime(x.closed_at) : 'ochiq', U[x.opened_by] || '', x.summary?.total ?? '', x.expected_cash ?? '', x.counted_cash ?? '', x.counted_cash != null && x.expected_cash != null ? x.counted_cash - x.expected_cash : '']);
+    S_('Xodimlar'); R.push(['Xodim', 'Buyurtma', 'Savdo', 'O\'rtacha chek', 'Bekor qilgan (soni)', 'Bekor qilgan (summa)', 'Chegirma']); for (const w of a.waiters) R.push([w.name, w.orders, w.sum, w.avg, w.cancel_n, w.cancel_sum, w.discount]);
+    S_('Toifalar'); R.push(['Toifa', 'Savdo', 'Tannarx', 'Foyda']); for (const x of a.categories) R.push([x.name, x.revenue, x.cost, x.profit]);
+    S_('Taomlar'); R.push(['Taom', 'Toifa', 'Soni', 'Savdo', 'Tannarx', 'Foyda']); for (const i of a.items) R.push([i.name, i.category || '', String(i.qty).replace('.', ','), i.revenue, i.cost, i.profit]);
+    S_('Ombor (qiymat)'); for (const [l, k] of [['Davr boshida', 'open_v'], ['Kirim', 'in_v'], ['Sarf', 'used_v'], ['Utilizatsiya', 'waste_v'], ['Inventarizatsiya farqi', 'inv_v'], ['Davr oxirida', 'close_v']]) R.push([l, stockT[k]]);
+    S_('Qarzlar (hozir)'); R.push(['Mijozlar nasiyasi', debts.total]); R.push(['Yetkazib beruvchilarga qarz', sups.total]);
+    csv(`umumiy-hisobot_${A.range.from}_${A.range.to}`, R[0], R.slice(1));
+  };
+};
 
 // =================== Diagnostika ===================
 const DIAG_ICON = { bad: 'alert', warn: 'alert', ok: 'check', info: 'note' };

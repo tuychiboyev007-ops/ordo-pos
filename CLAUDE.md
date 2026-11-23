@@ -143,6 +143,11 @@ Muhim qoidalar:
   bo'yicha tekshiruvlar — har biri `level` (bad | warn | ok | info), sarlavha, izoh va tuzatiladigan bo'lim (`page`).
   Ball = 100 − 12 × muammo − 5 × ogohlantirish. Yangi tekshiruv — `diagnostics()` ichida `add(guruh, kalit, daraja, …)`;
   me'yorlar shu yerda (bekor qilish 1/3%, chegirma 5/10%, utilizatsiya 3/6%, tannarx ulushi 40/50%, taom tannarxi 45%).
+- **Umumiy hisobot** (`PAGES.report`, Hisobotlar ro'yxatida birinchi): butun davr bitta sahifada — asosiy ko'rsatkichlar
+  (oldingi davr bilan), foyda va zarar (rasxod turlari bilan), to'lov va buyurtma turlari, smenalar va kassa farqi, xodimlar,
+  toifalar, nazorat, eng ko'p sotilgan 15 taom, ombor qiymati, qarzlar; «Chop etish / PDF» (`window.print()`, `@media print`
+  A4) va Excel (CSV, hamma bo'lim). Alohida server yo'li YO'Q — mavjud yo'llardan ketma-ket yig'iladi (`analytics`, `summary`,
+  `expenses`, `material`, `shifts`, `debts`, `suppliers`), shuning uchun raqamlar boshqa hisobotlar bilan aynan bir xil.
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 
