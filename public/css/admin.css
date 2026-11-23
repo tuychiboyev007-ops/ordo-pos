@@ -216,3 +216,20 @@ details.more summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:
 .urow b{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
 @media (max-width:820px){.tcards{grid-template-columns:1fr}.tcards button{min-height:0}.ecstats{grid-template-columns:1fr 1fr}}
 .uchip.on:disabled{opacity:1}
+
+/* Diagnostika */
+.dg-top{display:grid;grid-template-columns:minmax(300px,1fr) minmax(0,2fr);gap:16px;align-items:stretch}
+.dg-top .stats{align-content:stretch}
+.dg-score{display:flex;align-items:center;gap:18px;padding:16px 20px}
+.dg-score.ok{color:var(--ok)}.dg-score.warn{color:var(--warn)}.dg-score.bad{color:var(--bad)}
+.dg-score .vd{font-size:21px;font-weight:600;color:var(--ink);margin-bottom:4px}
+.dg-card.urgent{border-color:#efb9b9}
+.dg{display:flex;gap:12px;align-items:flex-start;padding:13px 18px;border-top:1px solid var(--line-2)}
+.dg .ic{flex:none;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--line-2);color:var(--muted)}
+.dg .ic svg.i{width:17px;height:17px}
+.dg.bad .ic{background:var(--bad-soft);color:var(--bad)}.dg.warn .ic{background:var(--warn-soft);color:var(--warn)}.dg.ok .ic{background:var(--ok-soft);color:var(--ok)}.dg.info .ic{background:var(--blue-soft);color:var(--blue)}
+.dg .tx{flex:1;min-width:0;font-size:14px;line-height:1.5;color:var(--ink-3)}
+.dg .tx b{display:block;font-size:15px;color:var(--ink);font-weight:600}
+.dg .btn,.dg .badge{flex:none;margin-top:2px}
+@media (max-width:1100px){.dg-top{grid-template-columns:1fr}}
+@media (max-width:600px){.dg{flex-wrap:wrap}.dg .tx{flex-basis:calc(100% - 44px)}.dg .btn,.dg .badge{margin-left:42px}}

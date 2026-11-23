@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 246 ta)
+npm test         # API sinovlari (PGlite, 271 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -131,6 +131,18 @@ Muhim qoidalar:
   tovar) va «+ Element» (nomi, o'lchovi, nechta bor, necha pulga olingan). Boshqaruv yo'llari rahbar sessiyasini so'raydi —
   kassa uni PIN kiritilganda oladi (`MGR`), so'rov `mgrPost()` bilan ketadi; oflayn bo'lsa qo'shilmaydi (xabar chiqadi).
   Saqlangach `refreshBoot()` — yangi taom kassa kartochkalarida darrov ko'rinadi. Kassir va ofitsiantda tugmalar yo'q.
+- **Element kartasi** (`ingredientForm`): yangi elementda turi — Xom ashyo / Zagotovka (tarkib oynasiga o'tadi) / Tayyor tovar
+  (menyu toifasi va sotuv narxi), guruh tugmalari, 1 birlik narxi YOKI jami summa (biri yozilsa ikkinchisi chiqadi),
+  yetkazib beruvchi (to'langan / qarzga), eng kam qoldiq. Tahrirlashda `GET /api/stock/ingredient?id=` (`ingredientInfo`):
+  qoldiq, narx, qaysi taom va zagotovkalarda ishlatiladi, oxirgi kirim, menyudagi tayyor tovari; «Kirim qilish» va «Harakatlar».
+- **Savdo analitikasi** (`analytics()` ga qo'shildi): `waiters` (xodim: savdo, ulush, o'rtacha chek, oldingi davr, bekor
+  qilgani, chegirmasi), `types`, `methods`, `halls`, `tables`, `extra` (mehmon boshiga, chekdagi taom soni, zalda o'tirish
+  vaqti — 12 soatdan uzun buyurtma sanalmaydi) va `forecast` (`monthForecast`: shu oy hozirgacha + qolgan kunlarga so'nggi
+  28 kundagi SHU HAFTA KUNINING o'rtachasi; asos bo'lmasa `projected: null`).
+- **Diagnostika** (`GET /api/reports/diagnostics`, `PAGES.diag`): savdo (7 kun), pul nazorati, ombor, menyu (30 kun va hozir)
+  bo'yicha tekshiruvlar — har biri `level` (bad | warn | ok | info), sarlavha, izoh va tuzatiladigan bo'lim (`page`).
+  Ball = 100 − 12 × muammo − 5 × ogohlantirish. Yangi tekshiruv — `diagnostics()` ichida `add(guruh, kalit, daraja, …)`;
+  me'yorlar shu yerda (bekor qilish 1/3%, chegirma 5/10%, utilizatsiya 3/6%, tannarx ulushi 40/50%, taom tannarxi 45%).
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

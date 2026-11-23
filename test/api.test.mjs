@@ -558,6 +558,44 @@ group('Element kartasi: qayerda ishlatiladi, oxirgi kirim');
   ok(r.status === 401 || r.status === 403, 'faqat rahbar', r.status);
 }
 
+// ---------- Savdo analitikasi va diagnostika ----------
+group('Savdo analitikasi (xodim, tur, to\'lov, bashorat) va diagnostika');
+{
+  const day = today(); const sumOf = (rows, k) => rows.reduce((a, x) => a + x[k], 0);
+  const a = await call('GET', `/api/reports/analytics?from=${day}&to=${day}`, null, SES);
+  ok(a.waiters.length > 0 && sumOf(a.waiters, 'sum') === a.cur.revenue && sumOf(a.waiters, 'orders') === a.cur.orders, 'xodimlar kesimi: yig\'indisi savdoga teng', [sumOf(a.waiters, 'sum'), a.cur.revenue]);
+  ok(a.waiters.every((w, i) => !i || a.waiters[i - 1].sum >= w.sum) && a.waiters[0].name && a.waiters[0].avg === Math.round(a.waiters[0].sum / a.waiters[0].orders), 'xodimlar savdo bo\'yicha tartibda, o\'rtacha chek bilan');
+  ok(sumOf(a.types, 'sum') === a.cur.revenue && sumOf(a.types, 'n') === a.cur.orders, 'buyurtma turlari yig\'indisi savdoga teng');
+  ok(a.methods.length > 0 && Math.abs(sumOf(a.methods, 'share') - 100) < 0.5, 'to\'lov turlari ulushi 100%', a.methods);
+  ok(a.extra && a.extra.items_per_check > 0 && a.extra.per_guest >= 0 && Array.isArray(a.halls) && Array.isArray(a.tables), 'qo\'shimcha ko\'rsatkichlar: chekdagi taom soni, zal va stollar', a.extra);
+  ok(a.forecast && a.forecast.month === day.slice(0, 7) && a.forecast.so_far >= a.cur.revenue && a.forecast.days_left >= 0 && a.forecast.days_left <= 30, 'oy bashorati: shu oy savdosi va qolgan kunlar', a.forecast);
+  ok(a.forecast.has_basis ? a.forecast.projected >= a.forecast.so_far : a.forecast.projected === null, 'bashorat hozirgi savdodan kam bo\'lmaydi (asos bo\'lmasa — bo\'sh)', a.forecast);
+
+  let d = await call('GET', '/api/reports/diagnostics', null, SES);
+  ok(d.ok && d.checks.length >= 8 && d.score >= 0 && d.score <= 100, 'diagnostika: tekshiruvlar va ball', [d.checks.length, d.score]);
+  ok(d.counts.bad + d.counts.warn + d.counts.ok + d.counts.info === d.checks.length && d.score === Math.max(0, 100 - d.counts.bad * 12 - d.counts.warn * 5), 'ball = 100 − 12 × muammo − 5 × ogohlantirish', d.counts);
+  ok(d.checks.every((x) => x.group && x.key && x.title && x.detail && ['bad', 'warn', 'ok', 'info'].includes(x.level)), 'har tekshiruvda guruh, daraja, sarlavha va izoh bor');
+  ok(['trend', 'cancels', 'discounts', 'dish_cost', 'bot'].every((k) => d.checks.some((x) => x.key === k)), 'asosiy tekshiruvlar joyida', d.checks.map((x) => x.key));
+  ok(!JSON.stringify(d.checks).match(/undefined|NaN|null so'm/), 'matnlarda undefined/NaN yo\'q');
+
+  const z = (await call('POST', '/api/admin/product', { name: 'Zarar T', price: 1000, cost: 5000, category_id: cat }, SES)).id;
+  const ni = await mk('Manfiy T', 'dona');
+  await call('POST', '/api/stock/doc', { kind: 'utilizatsiya', reason: 'sinov', lines: [{ ingredient_id: ni, qty: 2 }] }, SES);
+  const d2 = await call('GET', '/api/reports/diagnostics', null, SES);
+  const loss = d2.checks.find((x) => x.key === 'loss'); const neg = d2.checks.find((x) => x.key === 'negative');
+  ok(loss && loss.level === 'bad' && /Zarar T/.test(loss.detail) && loss.page === 'menu', 'zararga sotilayotgan taom topiladi', loss);
+  ok(neg && neg.level === 'bad' && /Manfiy T/.test(neg.detail), 'manfiy qoldiqli element topiladi', neg);
+  ok(d2.score <= d.score, 'muammo qo\'shilsa ball oshmaydi', [d.score, d2.score]);
+  await call('POST', '/api/admin/remove', { kind: 'product', id: z }, SES);
+  await call('POST', '/api/stock/doc', { kind: 'inventar', lines: [{ ingredient_id: ni, qty: 0 }] }, SES);
+  const d3 = await call('GET', '/api/reports/diagnostics', null, SES);
+  ok(!/Zarar T/.test(JSON.stringify(d3.checks)) && !/Manfiy T/.test(d3.checks.find((x) => x.key === 'negative')?.detail || ''), 'tuzatilgach ro\'yxatdan chiqadi');
+  const inv = d3.checks.find((x) => x.key === 'inventory');
+  ok(inv && inv.level === 'ok', 'inventarizatsiya qilingach — joyida', inv);
+  const r = await call('GET', '/api/reports/diagnostics', null, DEV);
+  ok(r.status === 401 || r.status === 403, 'faqat rahbar', r.status);
+}
+
 // ---------- Telegram bot ----------
 group('Telegram bot: buyurtma kassaga tushadi, holat botga qaytadi');
 {

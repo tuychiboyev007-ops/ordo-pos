@@ -54,6 +54,7 @@ const ROUTES = {
   'GET /api/reports/shifts': ['manager', R.shifts],
   'GET /api/reports/profit': ['manager', R.profit],
   'GET /api/reports/analytics': ['manager', R.analytics],
+  'GET /api/reports/diagnostics': ['manager', R.diagnostics],
   'GET /api/reports/order': ['manager', R.orderLog],
   'POST /api/order/pay-method': ['manager', S.changePayMethod],
   'GET /api/dashboard': ['manager', P.dashboard],

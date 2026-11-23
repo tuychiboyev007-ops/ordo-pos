@@ -20,7 +20,7 @@ const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 /** Boshqaruv — bo'limlar va ularning sahifalari; hammasi yon panelda doim ko'rinib turadi. */
 const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
-  ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['analytics', 'Analitika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
+  ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['analytics', 'Savdo analitikasi'], ['diag', 'Diagnostika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
   ['stock', 'box', 'Ombor', [['stock', 'Elementlar'], ['preps', 'Zagotovkalar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
   ['menu', 'list', 'Menyu', [['menu', 'Menyu'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
   ['money', 'wallet', 'Pul', [['expenses', 'Rasxod'], ['debts', 'Nasiya'], ['suppliers', 'Yetkazib beruvchilar']]],
@@ -210,7 +210,7 @@ PAGES.dash = async (m) => {
     + (nc.length ? `<div class="card" style="border-color:#f0cf86;background:#fffbf1;padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <span>${icon('alert')} <b>${nc.length} ta sotilgan taomning tannarxi noma'lum</b> (${esc(nc.slice(0, 4).map((i) => i.name).join(', '))}${nc.length > 4 ? '…' : ''}) — foyda haqiqiydan ko'p ko'rinyapti. Elementlar kirim qilinsa yoki tannarx yozilsa, to'g'ri bo'ladi.</span>
         <span class="grow"></span><button class="btn sm" data-go="docs">${icon('truckin')}Kirim qilish</button><button class="btn sm" data-go="menu">Taomlar</button></div>` : '')
-    + `<div class="quick noprint"><button class="btn sm" data-go="menu">${icon('plus')}Menyuga taom yoki tovar</button><button class="btn sm" data-go="stock">${icon('plus')}Element</button><button class="btn sm" data-go="docs">${icon('truckin')}Kirim</button><button class="btn sm" data-go="preps">${icon('flame')}Zagotovka</button><button class="btn sm" data-go="analytics">${icon('chart')}Analitika</button></div>
+    + `<div class="quick noprint"><button class="btn sm" data-go="menu">${icon('plus')}Menyuga taom yoki tovar</button><button class="btn sm" data-go="stock">${icon('plus')}Element</button><button class="btn sm" data-go="docs">${icon('truckin')}Kirim</button><button class="btn sm" data-go="preps">${icon('flame')}Zagotovka</button><button class="btn sm" data-go="analytics">${icon('chart')}Savdo analitikasi</button><button class="btn sm" data-go="diag">${icon('alert')}Diagnostika</button></div>
     <div class="stats">${stat('Savdo', sum(s.total), `${s.orders} ta buyurtma`, 'accent')}${stat('O\'rtacha chek', sum(s.avg), `${s.guests} mehmon`)}
       ${stat('Tannarx (texkarta)', sum(d.food_cost), s.total ? `savdoning ${pct(d.food_cost, s.total)}%` : '')}${stat('Rasxod', sum(d.expenses))}
       ${stat('Utilizatsiya', sum(d.waste))}${stat('Taxminiy foyda', `<span class="${d.profit < 0 ? 'neg' : ''}">${sum(d.profit)}</span>`, nc.length ? 'tannarxi noma\'lum taomlar hisobga olinmagan' : 'savdo − tannarx − rasxod − utilizatsiya')}</div>
@@ -333,13 +333,17 @@ function insights(d) {
   const loss = d.items.filter((i) => !i.no_cost && i.profit < 0);
   if (loss.length) add('bad', `<b>${loss.length} ta</b> taom tannarxidan arzon sotilyapti: ${loss.slice(0, 3).map((i) => esc(i.name)).join(', ')}${loss.length > 3 ? '…' : ''}.`);
   if (d.dead_n) add('bad', `Menyudagi ${d.menu_n} ta taomdan <b>${d.dead_n} tasi</b> bu davrda bir marta ham sotilmadi.`);
+  if (d.waiters.length > 1) { const w = d.waiters[0]; add('good', `Eng ko'p sotgan xodim — <b>${esc(w.name)}</b>: ${sum(w.sum)} so'm (${w.orders} ta buyurtma, o'rtacha chek ${sum(w.avg)}).`); }
+  const wc = d.waiters.filter((w) => w.cancel_n).sort((a, b) => b.cancel_sum - a.cancel_sum)[0];
+  if (wc) add('bad', `Eng ko'p taom bekor qilgan — <b>${esc(wc.name)}</b>: ${wc.cancel_n} ta, ${sum(wc.cancel_sum)} so'm (oshxonaga ketgandan keyin).`);
+  if (d.forecast?.projected != null) { const f = d.forecast; add(f.prev_month && f.projected < f.prev_month ? 'bad' : 'info', `Shu sur'atda oy yakunida savdo <b>${sum(f.projected)}</b> so'm bo'ladi${f.prev_month ? ` — o'tgan oy ${sum(f.prev_month)} edi` : ''}.`); }
   if (c.no_cost) add('info', `<b>${c.no_cost} ta</b> taomning tannarxi yozilmagan — foyda aslidan ko'p ko'rinishi mumkin (Menyu → Taomlar va texkarta).`);
   return out;
 }
 
 PAGES.analytics = async (m) => {
   const d = await S('/api/reports/analytics?' + rq());
-  const c = d.cur; const o = d.old;
+  const c = d.cur; const o = d.old; const x = d.extra; const fc = d.forecast;
   const moved = d.items.map((i) => ({ ...i, diff: i.revenue - i.prev_revenue }));
   const up = moved.filter((i) => i.diff > 0).sort((a, b) => b.diff - a.diff).slice(0, 8);
   const down = [...moved.filter((i) => i.diff < 0), ...d.gone.map((g) => ({ ...g, revenue: 0, qty: 0, diff: -g.prev_revenue }))].sort((a, b) => a.diff - b.diff).slice(0, 8);
@@ -348,16 +352,33 @@ PAGES.analytics = async (m) => {
   const ABC_T = { A: 'Asosiy — savdoning 80%', B: 'O\'rtacha — keyingi 15%', C: 'Kam sotiladi — oxirgi 5%' };
   const wmax = Math.max(1, ...d.weekdays.map((w) => w.avg));
 
-  m.innerHTML = head('Analitika', `${rlabel()} · oldingi davr bilan solishtirilgan: ${dm(d.prev.from)}${d.prev.from === d.prev.to ? '' : ' — ' + dm(d.prev.to)}`, xlBtn('xl')) + rangeBar(() => show('analytics'))
+  m.innerHTML = head('Savdo analitikasi', `${rlabel()} · oldingi davr bilan solishtirilgan: ${dm(d.prev.from)}${d.prev.from === d.prev.to ? '' : ' — ' + dm(d.prev.to)}`, xlBtn('xl')) + rangeBar(() => show('analytics'))
     + `<div class="stats mt">${kpi('Savdo', c.revenue, o.revenue, sum, '', 'accent')}${kpi('Buyurtmalar', c.orders, o.orders, (v) => String(v))}
       ${kpi('O\'rtacha chek', c.avg_check, o.avg_check)}${kpi('Yalpi foyda', c.gross, o.gross, sum, `marja ${String(c.margin).replace('.', ',')}%`)}
       ${kpi('Sof foyda', c.net, o.net, sum, 'rasxod va utilizatsiyadan keyin')}</div>
+    <div class="stats mt">${kpi('Mehmon boshiga', x.per_guest, x.per_guest_prev, sum, `${c.guests} mehmon`)}${kpi('Chekdagi taom soni', x.items_per_check, x.items_per_check_prev, (v) => String(v).replace('.', ','), 'o\'rtacha')}
+      ${kpi('Zalda o\'tirish vaqti', x.sit_min, x.sit_prev, (v) => (v ? v + ' daq' : '—'), 'ochilgandan yopilguncha')}
+      ${fc.projected != null ? `<div class="stat"><div class="l">Oy yakuni bashorati</div><div class="v">${sum(fc.projected)}</div><div class="s">hozircha ${sum(fc.so_far)} · ${fc.days_left} kun qoldi${fc.prev_month ? ` · o'tgan oy ${sum(fc.prev_month)}` : ''}</div></div>`
+        : `<div class="stat"><div class="l">Shu oy savdosi</div><div class="v">${sum(fc.so_far)}</div><div class="s">${fc.prev_month ? `o'tgan oy ${sum(fc.prev_month)}` : 'bashorat uchun ma\'lumot kam'}</div></div>`}</div>
     <div class="cols2 mt"><div class="card"><div class="card-h"><h3>Kunlar bo'yicha savdo</h3><span class="hint">oldingi davr bilan yonma-yon</span></div><div class="card-b">${bars2(d.days, d.prev_days)}</div></div>
       <div class="card"><div class="card-h"><h3>Xulosa</h3></div><div class="card-b"><ul class="ins">${insights(d).join('')}</ul></div></div></div>
     <div class="cols2 mt"><div class="card"><div class="card-h"><h3>Qaysi kuni, qaysi soatda</h3><span class="hint">Toshkent vaqti</span></div><div class="card-b">${heatmap(d.heat)}</div></div>
       <div class="card"><div class="card-h"><h3>Hafta kunlari</h3><span class="hint">kuniga o'rtacha</span></div><div class="card-b">
         ${d.weekdays.map((w) => `<div class="hbar"><div class="t"><span>${DOW[w.dow]} <span class="dim">· ${w.days ? w.n + ' ta buyurtma' : 'davrda yo\'q'}</span></span><b>${sum(w.avg)}</b></div><div class="track"><i style="width:${(w.avg / wmax) * 100}%"></i></div></div>`).join('')}
         <div class="lbl" style="margin:16px 0 4px">Soatlar bo'yicha</div>${d.hours.length ? bars(d.hours.map((x) => ({ ...x, h: String(x.h).padStart(2, '0') }))) : '<div class="empty">Ma\'lumot yo\'q</div>'}</div></div></div>
+    <div class="card mt"><div class="card-h"><h3>Xodimlar</h3><span class="hint">kim qancha sotdi — oldingi davr bilan</span></div><div class="tbl-wrap">
+      ${d.waiters.length ? `<table class="tbl"><thead><tr><th>Xodim</th><th class="r">Buyurtma</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">O'rtacha chek</th><th class="r">O'zgarish</th><th class="r">Bekor qilgan</th><th class="r">Chegirma</th></tr></thead><tbody>
+      ${d.waiters.map((w) => `<tr><td><b>${esc(w.name)}</b>${w.role ? `<div class="dim" style="font-size:12.5px">${esc(ROLE_NAMES[w.role] || w.role)}</div>` : ''}</td><td class="r">${w.orders}</td><td class="r"><b>${sum(w.sum)}</b></td><td class="r dim">${String(w.share).replace('.', ',')}%</td>
+        <td class="r">${sum(w.avg)}</td><td class="r">${delta(w.sum, w.prev)}</td><td class="r ${w.cancel_n ? 'neg' : 'dim'}">${w.cancel_n ? `${w.cancel_n} ta · ${sum(w.cancel_sum)}` : '—'}</td><td class="r ${w.discount ? '' : 'dim'}">${w.discount ? sum(w.discount) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Ma\'lumot yo\'q</div>'}</div></div>
+    <div class="cols2 even mt"><div class="card"><div class="card-h"><h3>Buyurtma turi</h3></div><div class="card-b">
+        ${d.types.map((r) => `<div class="hbar"><div class="t"><span>${esc(TYPE_NAMES[r.type] || r.type)} <span class="dim">· ${r.n} ta · o'rtacha ${sum(r.avg)}</span></span><b>${sum(r.sum)} <span class="dim" style="font-weight:400">${String(r.share).replace('.', ',')}%</span></b></div><div class="track"><i style="width:${r.share}%"></i></div></div>`).join('') || '<div class="empty">Ma\'lumot yo\'q</div>'}
+</div></div>
+      <div class="card"><div class="card-h"><h3>To'lov turi</h3></div><div class="card-b">
+        ${d.methods.map((r) => `<div class="hbar"><div class="t"><span>${esc(PAY_NAMES[r.method] || r.method)} <span class="dim">· ${r.n} ta</span></span><b>${sum(r.sum)} <span class="dim" style="font-weight:400">${String(r.share).replace('.', ',')}%</span></b></div><div class="track"><i style="width:${r.share}%"></i></div></div>`).join('')}</div></div></div>
+    ${d.halls.length ? `<div class="cols2 even mt"><div class="card"><div class="card-h"><h3>Zallar</h3></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Zal</th><th class="r">Buyurtma</th><th class="r">Mehmon</th><th class="r">Savdo</th><th class="r">O'rtacha chek</th><th class="r">O'tirish vaqti</th></tr></thead><tbody>
+      ${d.halls.map((h) => `<tr><td><b>${esc(h.name)}</b></td><td class="r">${h.n}</td><td class="r">${h.guests || '—'}</td><td class="r"><b>${sum(h.sum)}</b></td><td class="r">${sum(h.avg)}</td><td class="r dim">${h.minutes ? h.minutes + ' daq' : '—'}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card"><div class="card-h"><h3>Eng ko'p ishlagan stollar</h3></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Stol</th><th>Zal</th><th class="r">Buyurtma</th><th class="r">Savdo</th></tr></thead><tbody>
+      ${d.tables.map((tb) => `<tr><td><b>${esc(tb.name)}</b></td><td class="dim">${esc(tb.hall)}</td><td class="r">${tb.n}</td><td class="r">${sum(tb.sum)}</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
     <div class="cols2 mt"><div class="card"><div class="card-h"><h3>Toifalar</h3><span class="hint">savdodagi ulushi va foydasi</span></div><div class="tbl-wrap">
       ${d.categories.length ? `<table class="tbl"><thead><tr><th>Toifa</th><th class="r">Taom</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">Foyda</th><th class="r">Marja</th></tr></thead><tbody>
       ${d.categories.map((x) => `<tr><td>${esc(x.name)}<div class="track sm"><i style="width:${x.share}%"></i></div></td><td class="r">${x.n}</td><td class="r">${sum(x.revenue)}</td><td class="r dim">${String(x.share).replace('.', ',')}%</td>
@@ -811,6 +832,33 @@ async function docView(id) {
     }),
   });
 }
+
+// =================== Diagnostika ===================
+const DIAG_ICON = { bad: 'alert', warn: 'alert', ok: 'check', info: 'note' };
+const DIAG_WORD = { bad: 'Muammo', warn: 'E\'tibor bering', ok: 'Joyida', info: 'Ma\'lumot' };
+PAGES.diag = async (m) => {
+  const d = await S('/api/reports/diagnostics');
+  const tone = d.score >= 85 ? 'ok' : d.score >= 65 ? 'warn' : 'bad';
+  const verdict = d.score >= 85 ? 'Holat yaxshi' : d.score >= 65 ? 'E\'tibor kerak' : 'Muammolar bor';
+  const R = 52; const C = 2 * Math.PI * R;
+  const row = (x) => `<div class="dg ${x.level}"><span class="ic">${icon(DIAG_ICON[x.level])}</span><div class="tx"><b>${esc(x.title)}</b><div>${esc(x.detail)}</div></div>
+    ${x.page && x.level !== 'ok' ? `<button class="btn sm" data-go="${x.page}">Ochish</button>` : `<span class="badge ${x.level === 'ok' ? 'ok' : ''}">${DIAG_WORD[x.level]}</span>`}</div>`;
+  const urgent = d.checks.filter((x) => x.level === 'bad');
+  const groups = [...new Set(d.checks.map((x) => x.group))];
+  m.innerHTML = head('Diagnostika', 'Restoran holatini tekshiruv: savdo — so\'nggi 7 kun, pul nazorati, ombor va menyu — so\'nggi 30 kun va hozirgi holat', `<button class="btn" id="again">${icon('check')}Qayta tekshirish</button>`)
+    + `<div class="dg-top"><div class="card dg-score ${tone}"><svg viewBox="0 0 120 120" width="132" height="132"><circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--line-2)" stroke-width="10"/>
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-dasharray="${(C * d.score) / 100} ${C}" transform="rotate(-90 60 60)"/>
+        <text x="60" y="58" text-anchor="middle" font-size="30" font-weight="700" fill="var(--ink)">${d.score}</text><text x="60" y="78" text-anchor="middle" font-size="11" fill="var(--muted)">100 dan</text></svg>
+        <div><div class="vd">${verdict}</div><div class="dim">${d.counts.bad ? `${d.counts.bad} ta muammo tuzatilishi kerak` : d.counts.warn ? `${d.counts.warn} ta narsaga e'tibor bering` : 'Jiddiy muammo topilmadi'}</div></div></div>
+      <div class="stats">${stat('Muammo', `<span class="${d.counts.bad ? 'neg' : ''}">${d.counts.bad}</span>`, 'darhol tuzatish kerak')}${stat('E\'tibor bering', d.counts.warn, 'me\'yordan chiqqan')}${stat('Joyida', d.counts.ok, 'tekshirildi — yaxshi')}</div></div>
+    ${urgent.length ? `<div class="card mt dg-card urgent"><div class="card-h"><h3>Avval shularni tuzating</h3><span class="grow"></span><span class="dim">${urgent.length} ta</span></div>${urgent.map(row).join('')}</div>` : ''}
+    ${groups.map((g) => { const list = d.checks.filter((x) => x.group === g && (x.level !== 'bad' || !urgent.length)); const all = d.checks.filter((x) => x.group === g);
+      const bad = all.filter((x) => x.level === 'bad').length; const warn = all.filter((x) => x.level === 'warn').length;
+      return list.length ? `<div class="card mt dg-card"><div class="card-h"><h3>${esc(g)}</h3><span class="grow"></span>${bad ? `<span class="badge bad">${bad} ta muammo</span>` : ''}${warn ? `<span class="badge warn">${warn} ta ogohlantirish</span>` : ''}${!bad && !warn ? '<span class="badge ok">joyida</span>' : ''}</div>${list.map(row).join('')}</div>` : ''; }).join('')}
+    <p class="hint" style="margin-top:14px">Ball: 100 dan har muammo uchun 12, har ogohlantirish uchun 5 ball ayriladi. Tuzatgach «Qayta tekshirish»ni bosing.</p>`;
+  $('#again').onclick = () => show('diag');
+  $$('[data-go]', m).forEach((b) => b.onclick = () => show(b.dataset.go));
+};
 
 // =================== Zagotovkalar (yarim tayyor mahsulot) ===================
 PAGES.preps = async (m) => {
