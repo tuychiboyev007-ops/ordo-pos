@@ -5,6 +5,9 @@
 import { unitCosts } from '../lib/cost.js';
 import { json, fail, body, str, int, isDay, dayRange } from '../lib/http.js';
 import { moveStock, consume, q3 } from '../lib/stock.js';
+import { shiftSummary } from '../../public/js/core.js';
+import { periodMoney } from './reports.js';
+import { currentShift, shiftMoves } from './sync.js';
 
 const UNITS = ['kg', 'l', 'dona'];
 const n = (v) => Number(v) || 0;
@@ -277,7 +280,18 @@ export async function material(req, env, db, auth) {
     FROM stock_moves m JOIN ingredients i ON i.id = m.ingredient_id AND i.company_id = m.company_id
     LEFT JOIN products p ON p.id = m.product_id AND p.company_id = m.company_id
     WHERE m.company_id = ? AND m.kind = 'sotuv' AND m.at >= ? AND m.at < ? GROUP BY p.name, i.name, i.unit ORDER BY v DESC LIMIT 500`, c, f, t);
-  return json({ ok: true, from, to, rows, totals: tot, dishes: dishes.map((d) => ({ ...d, q: n(d.q), v: Math.round(n(d.v)) })) });
+  // Pul xulosasi (rahbar bitta ekranda ko'rsin): savdo, sof foyda, utilizatsiya, xodimlar olgani — shu DAVR uchun,
+  // "Foyda" hisoboti bilan bir xil hisob. Kassadagi naqd pul esa HOZIRGI holat (ochiq smena), davrga bog'liq emas;
+  // smena yopiq bo'lsa null.
+  const pm = await periodMoney(db, c, f, t);
+  const sh = await currentShift(db, c);
+  let cash = null;
+  if (sh) {
+    const orders = (await db.all("SELECT doc FROM orders WHERE company_id = ? AND shift_id = ? AND status <> 'open'", c, sh.id)).map((r) => r.doc);
+    cash = shiftSummary(sh, orders, await shiftMoves(db, c, sh.id)).expected_cash;
+  }
+  const money = { ...pm.totals, cash, shift_number: sh?.number ?? null };
+  return json({ ok: true, from, to, rows, totals: tot, money, dishes: dishes.map((d) => ({ ...d, q: n(d.q), v: Math.round(n(d.v)) })) });
 }
 
 /** "Bugun omborda": nima keldi, nima ishlatildi, nima utilizatsiya qilindi, qancha qoldi. */

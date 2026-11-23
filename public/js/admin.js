@@ -257,9 +257,16 @@ PAGES.material = async (m) => {
   const groups = new Map();
   for (const r of d.rows) { const g = r.grp || 'Boshqa'; groups.set(g, [...(groups.get(g) || []), r]); }
   const cell = (q, v, u, cls = '') => `<td class="r ${cls}">${q ? qty(q, u) : '<span class="dim">—</span>'}</td><td class="r ${cls}">${v ? sum(v) : '<span class="dim">—</span>'}</td>`;
-  const t = d.totals;
+  const t = d.totals; const mo = d.money;
   m.innerHTML = head('Moddiy hisobot', `${rlabel()} · boshida + kirim − sarf − utilizatsiya ± inventarizatsiya = oxirida`, xlBtn('xl') + `<button class="btn sm" onclick="print()">${icon('print')}Chop etish</button>`) + rangeBar(() => show('material'))
-    + `<div class="stats mt">${stat('Davr boshida', sum(t.open_v))}${stat('Kirim', sum(t.in_v), '', 'accent')}${stat('Sarf (taomlarga)', sum(t.used_v))}${stat('Utilizatsiya', sum(t.waste_v))}${stat('Davr oxirida', sum(t.close_v))}</div>
+    + (mo ? `<div class="sec-t mt">Pul xulosasi</div>
+    <div class="stats">${stat('Savdo', sum(mo.revenue), `${mo.orders} ta buyurtma`)}
+      ${stat('Sof foyda', `<span class="${mo.net < 0 ? 'neg' : ''}">${sum(mo.net)}</span>`, `savdo − tannarx ${sum(mo.cost)} − rasxod ${sum(mo.expenses)} − utilizatsiya`, 'accent')}
+      ${stat('Utilizatsiya', sum(mo.waste), 'yaroqsiz bo\'lib chiqarilgan')}
+      ${stat('Xodimlar oldi', sum(mo.staff), mo.expenses - mo.staff ? `ish haqi · boshqa rasxod ${sum(mo.expenses - mo.staff)}` : 'ish haqi (rasxoddan)')}
+      ${stat('Kassada bor', mo.cash === null ? '<span class="dim">—</span>' : sum(mo.cash), mo.cash === null ? 'smena yopiq' : `hozir, naqd · Smena №${mo.shift_number ?? ''}`)}</div>
+    <div class="sec-t mt">Ombor (masalliqlar)</div>` : '')
+    + `<div class="stats${mo ? '' : ' mt'}">${stat('Davr boshida', sum(t.open_v))}${stat('Kirim', sum(t.in_v), '', 'accent')}${stat('Sarf (taomlarga)', sum(t.used_v))}${stat('Utilizatsiya', sum(t.waste_v))}${stat('Davr oxirida', sum(t.close_v))}</div>
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead>
       <tr><th rowspan="2">Masalliq</th><th colspan="2" class="c">Davr boshida</th><th colspan="2" class="c">Kirim</th><th colspan="2" class="c">Sarf (sotuv)</th><th colspan="2" class="c">Utilizatsiya</th><th colspan="2" class="c">Inventar / farq</th><th colspan="2" class="c">Davr oxirida</th></tr>
       <tr>${'<th class="r">Miqdor</th><th class="r">Summa</th>'.repeat(6)}</tr></thead><tbody>
@@ -273,7 +280,9 @@ PAGES.material = async (m) => {
   $$('[data-ing]', m).forEach((r) => r.onclick = () => movesModal(Number(r.dataset.ing), d.rows.find((x) => x.id === Number(r.dataset.ing))?.name));
   $('#xl').onclick = () => csv(`moddiy_hisobot_${A.range.from}_${A.range.to}`,
     ['Guruh', 'Masalliq', 'Birlik', 'Boshida miqdor', 'Boshida summa', 'Kirim miqdor', 'Kirim summa', 'Sarf miqdor', 'Sarf summa', 'Utilizatsiya miqdor', 'Utilizatsiya summa', 'Farq miqdor', 'Farq summa', 'Oxirida miqdor', 'Oxirida summa'],
-    d.rows.map((r) => [r.grp || '', r.name, r.unit, ...[r.open_q, r.open_v, r.in_q, r.in_v, r.used_q, r.used_v, r.waste_q, r.waste_v, r.inv_q, r.inv_v, r.close_q, r.close_v].map((v) => String(v).replace('.', ','))]));
+    [...d.rows.map((r) => [r.grp || '', r.name, r.unit, ...[r.open_q, r.open_v, r.in_q, r.in_v, r.used_q, r.used_v, r.waste_q, r.waste_v, r.inv_q, r.inv_v, r.close_q, r.close_v].map((v) => String(v).replace('.', ','))]),
+      ...(mo ? [[], ['PUL XULOSASI'], ['', 'Savdo', '', mo.revenue], ['', 'Tannarx', '', mo.cost], ['', 'Rasxod (jami)', '', mo.expenses], ['', 'shundan xodimlar oldi (ish haqi)', '', mo.staff],
+        ['', 'Utilizatsiya', '', mo.waste], ['', 'Sof foyda', '', mo.net], ['', 'Kassada bor (hozir, naqd)', '', mo.cash === null ? 'smena yopiq' : mo.cash]] : [])]);
 };
 
 async function movesModal(id, name, unit) {
@@ -608,7 +617,17 @@ async function productForm(p, d) {
   let createdId = null; // texkarta saqlanmay qolsa, qayta "Saqlash" ikkinchi taom yaratmasin
   const toInput = (l) => { const u = ilist.find((x) => x.id === l.ingredient_id)?.unit; return u === 'dona' ? String(l.qty).replace('.', ',') : String(Math.round(l.qty * 1000 * 10) / 10).replace('.', ','); };
   const small = (u) => (u === 'kg' ? 'g' : u === 'l' ? 'ml' : 'dona');
-  const recLine = (l = {}) => `<div class="ln" data-rl>${picker(ilist, l.ingredient_id)}<div class="unitbox"><input class="input" data-q inputmode="decimal" value="${l.qty ? toInput(l) : ''}" placeholder="0"><span data-u>${l.ingredient_id ? small(ilist.find((x) => x.id === l.ingredient_id)?.unit) : ''}</span></div><span class="sum" data-s></span><button class="icon-btn" type="button" data-rm>${icon('x')}</button></div>`;
+  const recLine = (l = {}) => `<div class="ln" data-rl>${picker(ilist, l.ingredient_id)}<div class="unitbox"><input class="input" data-q inputmode="decimal" value="${l.qty ? toInput(l) : ''}" placeholder="0"><span data-u>${l.ingredient_id ? small(ilist.find((x) => x.id === l.ingredient_id)?.unit) : ''}</span></div><span class="sum" data-s></span><button class="icon-btn" type="button" data-rm>${icon('x')}</button><div class="newing" data-nw hidden></div></div>`;
+  // Texkartada miqdor: kg/litr masalliq — gramm/ml da, dona — donada. Odam "10 gr", "30g", "0,03 kg", "1 dona" deb ham yozadi.
+  const recQty = (raw, unit) => {
+    const s = String(raw ?? '').trim().toLowerCase().replace(/\s+/g, '').replace(',', '.');
+    if (!s) return { v: 0, ok: true };
+    const m = /^(\d+(?:\.\d+)?|\.\d+)(kg|кг|kilo|gramm|gr|g|гр|г|litr|l|л|ml|мл|dona|ta|шт|x)?$/.exec(s);
+    if (!m) return { v: 0, ok: false };
+    let v = Number(m[1]);
+    if (unit !== 'dona' && /^(kg|кг|kilo|litr|l|л)$/.test(m[2] || '')) v *= 1000;   // "0,03 kg" → 30 g
+    return { v, ok: true };
+  };
   await openModal({
     title: p ? p.name : 'Yangi taom', size: 'xl',
     body: `<div class="tabs"><button class="on" data-t="main" type="button">Asosiy</button><button data-t="rec" type="button">Texnologik karta</button></div>
@@ -628,7 +647,7 @@ async function productForm(p, d) {
         <div class="grid3"><div class="field"><label>Shtrix-kod</label><input class="input" data-b value="${esc(p?.barcode || '')}"></div><div class="field"><label>IKPU (soliq kodi)</label><input class="input" data-ik value="${esc(p?.ikpu || '')}" placeholder="keyin kerak bo'ladi"></div>
         <div class="field"><label>Tartib</label><input class="input" data-so inputmode="numeric" value="${p?.sort ?? 0}"></div></div></div>
       <div data-tab="rec" hidden><p class="hint" style="margin-bottom:12px">1 ${p?.unit === 'kg' ? 'kg' : 'porsiya'} uchun. Go'sht, sabzavot — <b>grammda</b>, suyuqlik — <b>ml</b>da, bulochka, tuxum — <b>dona</b>da yozing. Masalan: Burger — mol go'shti 170 g, pomidor 60 g, bodring 30 g, ketchup 10 g, mayonez 10 g, bulochka 1 dona.</p>
-        <p class="hint" style="margin:-4px 0 12px">Ro'yxatda yo'q masalliqni shu yerning o'zida qo'shsa bo'ladi — nomini yozing va «yangi masalliq qo'shish»ni bosing.</p>
+        <p class="hint" style="margin:-4px 0 12px">Ro'yxatda yo'q masalliqni shu yerning o'zida qo'shsa bo'ladi — nomini yozing, ostida chiqqan <b>gramm / ml / dona</b> dan o'lchovini tanlang. Miqdorga faqat son yoziladi (10 yoki «10 gr»).</p>
         <div class="lines rec"><div class="ln h"><span>Masalliq</span><span>Miqdor</span><span class="r">Tannarx</span><span></span></div><div data-rls>${(rec.lines.length ? rec.lines : [{}]).map(recLine).join('')}</div></div>
         <button class="btn sm" type="button" data-more>${icon('plus')}Masalliq qo'shish</button>
         <div class="card" data-np hidden style="padding:10px 14px;margin-top:12px;background:#fffbf1;border-color:#f0cf86;font-size:13.5px"></div>
@@ -649,9 +668,25 @@ async function productForm(p, d) {
       const calc = () => {
         let cost = 0; let noPrice = 0;
         $$('[data-rl]', mm).forEach((ln) => {
-          const id = Number(ln.querySelector('[data-pkq]').dataset.id); const i = ilist.find((x) => x.id === id);
+          const inp = ln.querySelector('[data-pkq]'); const raw = inp.value.trim();
+          let id = Number(inp.dataset.id);
+          // Nomi ro'yxatdagi bilan aynan bir xil yozilgan bo'lsa (bosmasdan) — o'sha masalliq.
+          if (!id && raw) { const ex = ilist.find((x) => x.name.toLowerCase() === raw.toLowerCase()); if (ex) { inp.dataset.id = ex.id; id = ex.id; } }
+          const i = ilist.find((x) => x.id === id);
+          // Ro'yxatda yo'q nom: qatorning ostida o'lchov so'raladi (yozib bo'lingach — nom maydonidan chiqilganda).
+          const nw = ln.querySelector('[data-nw]'); const need = !i && raw.length >= 2 && document.activeElement !== inp;
+          ln.classList.toggle('isnew', need);
+          if (need && nw.dataset.for !== raw) {
+            nw.dataset.for = raw;
+            // Hech biri oldindan belgilanmaydi: belgilangan ko'rinsa "tanlandi" deb o'ylanadi, aslida hali bosilmagan bo'ladi.
+            nw.innerHTML = `<span>«${esc(raw)}» ro'yxatda yo'q — <b>yangi masalliq</b>. Qanday o'lchanadi? Bittasini bosing:</span>
+              <span class="nw-b">${[['kg', 'gramm (kg)'], ['l', 'ml (litr)'], ['dona', 'dona']].map(([k, t]) => `<button type="button" data-nwu="${k}">${t}</button>`).join('')}</span>`;
+          }
+          if (!need) nw.dataset.for = '';
+          nw.hidden = !need;
           ln.querySelector('[data-u]').textContent = i ? small(i.unit) : '';
-          const v = numVal(ln.querySelector('[data-q]')); const base = i ? (i.unit === 'dona' ? v : v / 1000) : 0;
+          const qI = ln.querySelector('[data-q]'); const qp = recQty(qI.value, i?.unit || 'kg'); qI.classList.toggle('bad', !qp.ok);
+          const v = qp.v; const base = i ? (i.unit === 'dona' ? v : v / 1000) : 0;
           const c = i ? base * i.cost : 0; cost += c;
           ln.querySelector('[data-s]').innerHTML = i && v ? (i.cost ? sum(c) : '<span class="badge warn" title="Bu masalliq hali kirim qilinmagan">narxi yo\'q</span>') : '';
           if (i && v && !i.cost) noPrice++;
@@ -671,6 +706,18 @@ async function productForm(p, d) {
       const bind = () => bindPickers(mm, ilist, (pk) => { calc(); pk.closest('[data-rl]')?.querySelector('[data-q]')?.focus(); }, createIngredient);
       bind(); calc();
       mm.addEventListener('input', calc);
+      // Nom maydonidan chiqilganda (ro'yxatdan tanlash 150 ms ichida tugaydi) — yangi nom bo'lsa o'lchov so'raladi.
+      mm.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-pkq]')) setTimeout(calc, 200); });
+      mm.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-pkq]')) calc(); });
+      mm.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-nwu]'); if (!b || b.disabled) return;
+        const ln = b.closest('[data-rl]'); const inp = ln.querySelector('[data-pkq]'); const raw = inp.value.trim(); if (!raw) return;
+        $$('[data-nwu]', ln).forEach((x) => { x.disabled = true; });
+        try {
+          const x = await createIngredient(raw, b.dataset.nwu); ilist.push(x); inp.value = x.name; inp.dataset.id = x.id;
+          toast(`${x.name} masalliqlarga qo'shildi (${UNIT[x.unit]})`, 'ok'); calc(); ln.querySelector('[data-q]').focus();
+        } catch (er) { $$('[data-nwu]', ln).forEach((x) => { x.disabled = false; }); fail(er); }
+      });
       mm.querySelector('[data-more]').onclick = () => { mm.querySelector('[data-rls]').insertAdjacentHTML('beforeend', recLine()); bind(); };
       mm.addEventListener('click', (e) => { const rm = e.target.closest('[data-rm]'); if (rm) { if ($$('[data-rl]', mm).length > 1) rm.closest('[data-rl]').remove(); else { rm.closest('[data-rl]').querySelector('[data-pkq]').value = ''; rm.closest('[data-rl]').querySelector('[data-pkq]').dataset.id = ''; rm.closest('[data-rl]').querySelector('[data-q]').value = ''; } calc(); } });
       mm.querySelector('[data-del]')?.addEventListener('click', async () => {
@@ -684,10 +731,13 @@ async function productForm(p, d) {
           cost: moneyVal(mm.querySelector('[data-cost]')) };
         const lines = [];
         for (const ln of $$('[data-rl]', mm)) {
-          const id = Number(ln.querySelector('[data-pkq]').dataset.id); const v = numVal(ln.querySelector('[data-q]'));
-          if (!id && !v) continue;
-          if (!id || !(v > 0)) { toast('Texkartada masalliq yoki miqdor to\'liq emas', 'bad'); return; }
-          const i = ilist.find((x) => x.id === id);
+          const inp = ln.querySelector('[data-pkq]'); const qI = ln.querySelector('[data-q]'); const raw = inp.value.trim();
+          const id = Number(inp.dataset.id); const i = ilist.find((x) => x.id === id);
+          const qp = recQty(qI.value, i?.unit || 'kg'); const v = qp.v;
+          if (!raw && !qI.value.trim()) continue;
+          const tab = () => mm.querySelector('.tabs [data-t="rec"]')?.click();
+          if (!i) { tab(); calc(); toast(raw ? `«${raw}» — yangi masalliq: qator ostidan o'lchovini tanlang (gramm, ml yoki dona)` : 'Texkartada masalliq tanlanmagan qator bor', 'bad'); ln.scrollIntoView({ block: 'center' }); return; }
+          if (!qp.ok || !(v > 0)) { tab(); toast(`«${i.name}» miqdori ${qp.ok ? 'yozilmagan' : 'noto\'g\'ri — faqat son yozing, masalan 10'}`, 'bad'); qI.focus(); return; }
           lines.push({ ingredient_id: id, qty: i.unit === 'dona' ? v : v / 1000 });
         }
         try {

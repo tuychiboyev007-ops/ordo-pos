@@ -252,7 +252,27 @@ group('Foyda: har taom tannarxi va foydasi');
   ok(r.items.find((x) => x.product_id === suv)?.cost === 6000, 'tannarx keyin o\'zgarsa — o\'tgan savdo foydasi o\'zgarmaydi (sotuv paytidagi tannarx)');
   const dash = await call('GET', '/api/dashboard?day=' + today(), null, SES);
   ok(dash.food_cost === r.totals.cost, 'bosh sahifadagi tannarx foyda hisobotidagi bilan bir xil', [dash.food_cost, r.totals.cost]);
-  await sync([op('shift.close', { shift_id: SH3, counted: 10000 })]);
+  // Moddiy hisobotdagi pul xulosasi: savdo, foyda, utilizatsiya — "Foyda" hisoboti bilan AYNAN bir xil; xodimlar olgani
+  // (ish haqi rasxodi) alohida; kassadagi naqd — ochiq smenaning hozirgi holati.
+  r = await sync([op('expense', { expense_id: id('e'), category: 'Ish haqi', amount: 3000, pay_from: 'kassa', shift_id: SH3 }),
+    op('expense', { expense_id: id('e'), category: 'Avans (Ali)', amount: 1000, pay_from: 'kassa', shift_id: SH3 }),
+    op('expense', { expense_id: id('e'), category: 'Ijara', amount: 2000, pay_from: 'kassa', shift_id: SH3 })]);
+  ok(r.results.every((x) => x.ok), 'ish haqi, avans va ijara rasxodi yozildi', r.results);
+  const pf = (await call('GET', `/api/reports/profit?from=${today()}&to=${today()}`, null, SES)).totals;
+  let mr = await call('GET', `/api/reports/material?from=${today()}&to=${today()}`, null, SES);
+  const mo = mr.money;
+  ok(mo && mo.revenue === pf.revenue && mo.cost === pf.cost && mo.net === pf.net && mo.waste === pf.waste && mo.expenses === pf.expenses, 'moddiy hisobot: pul xulosasi Foyda hisoboti bilan bir xil', [mo, pf]);
+  ok(mo.net === mo.revenue - mo.cost - mo.expenses - mo.waste, 'sof foyda = savdo − tannarx − rasxod − utilizatsiya', mo);
+  ok(mo.staff === 4000 && mo.expenses - mo.staff >= 2000, 'xodimlar oldi: ish haqi + avans = 4 000 (ijara kirmaydi)', mo);
+  ok(mo.cash === 10000 - 6000 && mo.shift_number > 0, 'kassada bor: 10 000 naqd − 6 000 rasxod = 4 000 (ochiq smena)', mo);
+  ok(pf.staff === 4000, 'Foyda hisobotida ham xodimlar ulushi bor', pf.staff);
+  r = await call('GET', `/api/reports/material?from=${today()}&to=${today()}`, null, DEV);
+  ok(r.status === 401 || r.status === 403, 'pul xulosasi kassa qurilmasiga ochilmaydi (faqat rahbar)', r.status);
+  await sync([op('shift.close', { shift_id: SH3, counted: 4000 })]);
+  mr = await call('GET', `/api/reports/material?from=${today()}&to=${today()}`, null, SES);
+  ok(mr.money.cash === null && mr.money.revenue === mo.revenue, 'smena yopilgach "kassada bor" bo\'sh, savdo o\'zgarmaydi', mr.money);
+  mr = await call('GET', '/api/reports/material?from=2020-01-01&to=2020-01-01', null, SES);
+  ok(mr.money.revenue === 0 && mr.money.net === 0 && mr.money.staff === 0, 'savdosiz davrda pul xulosasi nol', mr.money);
 }
 
 // ---------- Telegram bot ----------

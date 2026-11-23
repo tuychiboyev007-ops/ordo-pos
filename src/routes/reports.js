@@ -81,23 +81,33 @@ export async function orderLog(req, env, db, auth) {
  * Foyda: har taom bo'yicha — nechta sotildi, tushum, tannarx, foyda. Pastda: chegirma, rasxod, sof foyda.
  * Taom foydasi chegirmagacha (chegirma butun buyurtmaga beriladi); umumiy foydada chegirma ayiriladi.
  */
+/** "Xodimlar oldi" — rasxodning shu turlari (ish haqi, avans). Tur nomi erkin yozilishi mumkin, shuning uchun so'z bo'yicha. */
+const STAFF_CAT = /ish\s*haqi|avans|oylik|maosh/i;
+
+/**
+ * Davrning pul yakuni: savdo, tannarx, rasxod (shundan xodimlarga), utilizatsiya, sof foyda.
+ * "Foyda" hisoboti ham, Moddiy hisobotdagi pul xulosasi ham SHUNDAN — ikki ekranda raqamlar bir xil bo'lishi shart.
+ */
+export async function periodMoney(db, c, f, t) {
+  const sc = await salesCost(db, c, f, t);
+  const tot = await db.first(`SELECT COUNT(*)::int AS orders, COALESCE(SUM(total), 0)::float8 AS total, COALESCE(SUM(discount), 0)::float8 AS discount,
+    COALESCE(SUM(service), 0)::float8 AS service FROM orders WHERE company_id = ? AND status = 'closed' AND closed_at >= ? AND closed_at < ?`, c, f, t);
+  const exp = await db.all('SELECT category, COALESCE(SUM(amount), 0)::float8 AS v FROM expenses WHERE company_id = ? AND deleted_at IS NULL AND at >= ? AND at < ? GROUP BY category', c, f, t);
+  const waste = await db.first("SELECT COALESCE(-SUM(qty * cost), 0)::float8 AS v FROM stock_moves m WHERE company_id = ? AND kind = 'utilizatsiya' AND at >= ? AND at < ? AND NOT EXISTS (SELECT 1 FROM stock_docs d WHERE d.company_id = m.company_id AND d.id = m.doc_id AND d.cancelled_at IS NOT NULL)", c, f, t);
+  const revenue = Math.round(n(tot.total));
+  const gross = revenue - sc.cost;
+  const expenses = Math.round(exp.reduce((s, x) => s + n(x.v), 0));
+  const staff = Math.round(exp.filter((x) => STAFF_CAT.test(x.category || '')).reduce((s, x) => s + n(x.v), 0));
+  const wasteV = Math.round(n(waste.v));
+  return { sc, totals: { orders: tot.orders, items_revenue: sc.revenue, discount: Math.round(n(tot.discount)), service: Math.round(n(tot.service)), revenue,
+    cost: sc.cost, gross, expenses, staff, waste: wasteV, net: gross - expenses - wasteV, no_cost: sc.items.filter((x) => x.no_cost).length } };
+}
+
 export async function profit(req, env, db, auth) {
   const url = new URL(req.url);
   const from = url.searchParams.get('from'); const to = url.searchParams.get('to') || from;
   if (!isDay(from) || !isDay(to) || to < from) return fail(400, 'bad_range', 'Sana noto\'g\'ri');
-  const [f, t] = dayRange(from, to); const c = auth.c;
-  const sc = await salesCost(db, c, f, t);
-  const tot = await db.first(`SELECT COUNT(*)::int AS orders, COALESCE(SUM(total), 0)::float8 AS total, COALESCE(SUM(discount), 0)::float8 AS discount,
-    COALESCE(SUM(service), 0)::float8 AS service FROM orders WHERE company_id = ? AND status = 'closed' AND closed_at >= ? AND closed_at < ?`, c, f, t);
-  const exp = await db.first('SELECT COALESCE(SUM(amount), 0)::float8 AS v FROM expenses WHERE company_id = ? AND deleted_at IS NULL AND at >= ? AND at < ?', c, f, t);
-  const waste = await db.first("SELECT COALESCE(-SUM(qty * cost), 0)::float8 AS v FROM stock_moves m WHERE company_id = ? AND kind = 'utilizatsiya' AND at >= ? AND at < ? AND NOT EXISTS (SELECT 1 FROM stock_docs d WHERE d.company_id = m.company_id AND d.id = m.doc_id AND d.cancelled_at IS NOT NULL)", c, f, t);
-  const revenue = Math.round(n(tot.total));
-  const gross = revenue - sc.cost;
-  const expenses = Math.round(n(exp.v)); const wasteV = Math.round(n(waste.v));
-  return json({
-    ok: true, from, to,
-    totals: { orders: tot.orders, items_revenue: sc.revenue, discount: Math.round(n(tot.discount)), service: Math.round(n(tot.service)), revenue,
-      cost: sc.cost, gross, expenses, waste: wasteV, net: gross - expenses - wasteV, no_cost: sc.items.filter((x) => x.no_cost).length },
-    items: sc.items.sort((a, b) => b.profit - a.profit),
-  });
+  const [f, t] = dayRange(from, to);
+  const { sc, totals } = await periodMoney(db, auth.c, f, t);
+  return json({ ok: true, from, to, totals, items: sc.items.sort((a, b) => b.profit - a.profit) });
 }
