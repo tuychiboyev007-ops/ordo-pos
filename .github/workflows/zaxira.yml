@@ -5,8 +5,13 @@ name: Kunlik zaxira (baza)
 # "zaxira bor, lekin ochilmaydi" holati bo'lmasin.
 #
 # Sozlash — bir marta: `node dev/zaxira-sozla.mjs` (faqat o'qiy oladigan kirish ochadi
-# va BACKUP_DATABASE_URL secret'ini yozadi). Secret yo'q bo'lsa ish xato bilan to'xtaydi —
-# "zaxira ishlayapti" deb noto'g'ri o'ylanmasin.
+# va BACKUP_DATABASE_URL secret'ini yozadi) va `node dev/zaxira-parol.mjs` (shifrlash paroli —
+# BACKUP_PASSPHRASE). Secret yo'q bo'lsa ish xato bilan to'xtaydi — "zaxira ishlayapti" deb
+# noto'g'ri o'ylanmasin.
+#
+# MUHIM: repo OCHIQ (public) — ochiq repoda artifact'larni GitHub'ga kirgan ISTALGAN odam yuklab
+# oladi. Shuning uchun nusxa faqat SHIFRLANGAN holda (gpg, AES-256) yuklanadi; parolsiz ish to'xtaydi,
+# shifrlanmagan fayl hech qachon yuklanmaydi. Ochish: `gpg -d ordo-....sql.gz.gpg | gunzip > tiklash.sql`.
 
 on:
   schedule:
@@ -30,12 +35,17 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       SRC: ${{ secrets.BACKUP_DATABASE_URL }}
+      PASS: ${{ secrets.BACKUP_PASSPHRASE }}
       DST: postgresql://postgres:tiklash@localhost:5432/postgres
     steps:
       - name: Sozlama borligini tekshirish
         run: |
           if [ -z "$SRC" ]; then
             echo "::error::BACKUP_DATABASE_URL secret yo'q. Kompyuterda: cd ~/Downloads/ordo-pos && node dev/zaxira-sozla.mjs"
+            exit 1
+          fi
+          if [ -z "$PASS" ]; then
+            echo "::error::BACKUP_PASSPHRASE secret yo'q — repo ochiq, shifrlanmagan nusxa yuklanmaydi. Kompyuterda: cd ~/Downloads/ordo-pos && node dev/zaxira-parol.mjs"
             exit 1
           fi
 
@@ -81,10 +91,19 @@ jobs:
           done
           [ "$(psql "$DST" -At -c 'SELECT count(*) FROM public.companies')" -gt 0 ] || { echo "::error::Tiklangan nusxada restoran yo'q"; exit 1; }
 
-      - name: GitHub'da saqlash
+      - name: Shifrlash (AES-256)
+        run: |
+          set -o pipefail
+          printf '%s' "$PASS" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 -o "$FILE.gpg" "$FILE"
+          # shifr ochilishini tekshirish — parol bilan aynan shu fayl chiqishi kerak
+          printf '%s' "$PASS" | gpg --batch --quiet --pinentry-mode loopback --passphrase-fd 0 -d "$FILE.gpg" | cmp - "$FILE"
+          rm -f "$FILE" tiklash.sql
+          echo "Shifrlangan: $FILE.gpg ($(stat -c %s "$FILE.gpg") bayt)"
+
+      - name: GitHub'da saqlash (faqat shifrlangan)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FILE }}
-          path: ${{ env.FILE }}
+          name: ${{ env.FILE }}.gpg
+          path: ${{ env.FILE }}.gpg
           retention-days: ${{ env.KEEP }}
           compression-level: 0

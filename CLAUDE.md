@@ -1,7 +1,8 @@
 # ordo — restoran va kafe uchun kassa (POS)
 
 Alohida mustaqil mahsulot (TopAgents/savdopro'ga aloqasi yo'q). Birinchi mijoz — **Mazza Point** (Qo'qon).
-Repo: `tuychiboyev007-ops/ordo-pos` (yopiq), branch `main`.
+Repo: `tuychiboyev007-ops/ordo-pos` — **OCHIQ (public, 2026-11-23 dan)**, branch `main`. Kodga hech qachon parol,
+kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ## Internetda
 
@@ -13,7 +14,8 @@ Repo: `tuychiboyev007-ops/ordo-pos` (yopiq), branch `main`.
 - Baza — Neon Postgres `ordo-db` (Vercel marketplace, eu-central-1). `DATABASE_URL`, `AUTH_SECRET` — Vercel
   sozlamalarida; mahalliy nusxasi `.env.local` (gitignore, `npx vercel env pull`).
 - Sxema o'zgarsa migratsiya birinchi so'rovda o'zi ishlaydi (`src/lib/pg.js` `ensureSchema`, `ordo_meta`).
-- Kunlik zaxira: `.github/workflows/zaxira.yml` (06:00 Toshkent, tiklab tekshiriladi) — `docs/ZAXIRA.md`.
+- Kunlik zaxira: `.github/workflows/zaxira.yml` (06:00 Toshkent, tiklab tekshiriladi, SHIFRLANGAN — repo ochiq,
+  artifact'ni istalgan odam yuklab oladi) — `docs/ZAXIRA.md`.
 - Qurilmalarni ulash: `docs/QURILMALAR.md`.
 
 ## Mahalliy ishga tushirish
