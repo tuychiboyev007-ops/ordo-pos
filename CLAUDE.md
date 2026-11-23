@@ -22,7 +22,8 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 143 ta)
+npm test         # API sinovlari (PGlite, 146 ta)
+node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
 - `npm run demo` — bazani TOZALAB qayta yaratadi. Ishlab turgan mahalliy bazada ishga tushirmang.
