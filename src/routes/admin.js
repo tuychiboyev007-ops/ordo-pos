@@ -18,7 +18,8 @@ export async function menu(req, env, db, auth) {
     ok: true,
     stations: await db.all('SELECT * FROM stations WHERE company_id = ? AND active = true ORDER BY sort, id', c),
     categories: await db.all('SELECT * FROM categories WHERE company_id = ? AND active = true ORDER BY sort, id', c),
-    products: (await db.all(`SELECT id, category_id, name, price, cost, unit, station_id, barcode, ikpu, stop, sort, image_v,
+    products: (await db.all(`SELECT id, category_id, name, price, cost, unit, station_id, barcode, ikpu, stop, sort, image_v, goods_id,
+      (SELECT i.stock FROM ingredients i WHERE i.company_id = products.company_id AND i.id = products.goods_id AND i.active = true)::float8 AS goods_stock,
       CASE WHEN image LIKE '/%' THEN image WHEN image IS NOT NULL THEN 'db' END AS image FROM products WHERE company_id = ? AND active = true ORDER BY sort, name`, c))
       .map((p) => ({ ...p, price: Number(p.price), cost: Number(p.cost), image: imageUrl(c, p) })),
     halls: await db.all('SELECT id, name, sort, service_pct::float AS service_pct FROM halls WHERE company_id = ? AND active = true ORDER BY sort, id', c),
@@ -53,7 +54,19 @@ export async function saveProduct(req, env, db, auth) {
   // Tannarx (qo'lda): yuborilmasa eski qiymat qoladi.
   const cur = id ? await db.first('SELECT cost FROM products WHERE company_id = ? AND id = ?', c, id) : null;
   const cost = b.cost === undefined || b.cost === null ? Number(cur?.cost || 0) : Math.max(0, int(b.cost));
-  const vals = [cat, name, price, cost, b.unit === 'kg' ? 'kg' : 'dona', station, str(b.barcode, 40), str(b.ikpu, 20), bool(b.stop), int(b.sort)];
+  const unit = b.unit === 'kg' ? 'kg' : 'dona';
+  const vals = [cat, name, price, cost, unit, station, str(b.barcode, 40), str(b.ikpu, 20), bool(b.stop), int(b.sort)];
+  // Tayyor tovar (`goods`): yuborilmasa — o'zgarmaydi. Hech narsa yozilmasidan OLDIN tekshiriladi (taom yaratilib, xato chiqib qolmasin).
+  let goodsIng = null;
+  if (b.goods !== undefined && bool(b.goods)) {
+    const linked = id ? (await db.first('SELECT goods_id FROM products WHERE company_id = ? AND id = ?', c, id))?.goods_id : null;
+    goodsIng = linked ? await db.first('SELECT id, name, unit, true AS linked FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, linked) : null;
+    if (!goodsIng) goodsIng = await db.first('SELECT id, name, unit FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?)', c, name);
+    if (goodsIng && goodsIng.unit !== unit) {
+      const moved = await db.first('SELECT id FROM stock_moves WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, goodsIng.id);
+      if (moved) return fail(409, 'unit_mismatch', `Omborda «${goodsIng.name}» ${goodsIng.unit === 'dona' ? 'donalab' : goodsIng.unit + ' bilan'} hisoblanadi — sotish birligini ham shunday qo'ying`);
+    }
+  }
   // Rasm: yuborilmasa — o'zgarmaydi, '' — o'chiriladi, data:image — yangi (420 px gacha siqilgan bo'lishi kerak).
   let img;
   if (b.image === '' || b.image === null) img = null;
@@ -71,7 +84,25 @@ export async function saveProduct(req, env, db, auth) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, c, ...vals)).id;
   }
   if (img !== undefined) await db.run('UPDATE products SET image = ?, image_v = image_v + 1 WHERE company_id = ? AND id = ?', img, c, pid);
-  return json({ ok: true, id: pid });
+  let goodsId;
+  if (b.goods !== undefined && !bool(b.goods)) {
+    await db.run('UPDATE products SET goods_id = NULL WHERE company_id = ? AND id = ?', c, pid); goodsId = null;
+  } else if (b.goods !== undefined) {
+    goodsId = await db.tx(async (tx) => {
+      let ing = goodsIng;
+      if (!ing) ing = await tx.first("INSERT INTO ingredients (company_id, name, unit, grp) VALUES (?, ?, ?, 'Tayyor tovar') RETURNING id, name, unit", c, name, unit);
+      else if (ing.unit !== unit) await tx.run('UPDATE ingredients SET unit = ? WHERE company_id = ? AND id = ?', unit, c, ing.id);
+      // Taom nomi o'zgarsa ombordagi nomi ham o'zgaradi (boshqa masalliq shu nomda bo'lmasa).
+      if (ing.linked && ing.name !== name && !(await tx.first('SELECT id FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?) AND id <> ?', c, name, ing.id))) {
+        await tx.run('UPDATE ingredients SET name = ? WHERE company_id = ? AND id = ?', name, c, ing.id);
+      }
+      await tx.run('DELETE FROM recipes WHERE company_id = ? AND product_id = ?', c, pid);
+      await tx.run('INSERT INTO recipes (company_id, product_id, ingredient_id, qty) VALUES (?, ?, ?, 1)', c, pid, ing.id);
+      await tx.run('UPDATE products SET goods_id = ? WHERE company_id = ? AND id = ?', ing.id, c, pid);
+      return ing.id;
+    });
+  }
+  return json({ ok: true, id: pid, goods_id: goodsId });
 }
 
 /** Stop-list — kassadan ham (internet bo'lsa) o'zgartiriladi. */

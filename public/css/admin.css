@@ -184,3 +184,11 @@ details.more summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:
 
 /* Zagotovkalar */
 .tbl td.wrap{white-space:normal;min-width:220px;max-width:460px;line-height:1.45}
+
+/* Tayyor tovar belgisi (taom oynasi) va bosh sahifadagi tezkor amallar */
+.gcheck{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:2px 0 12px;cursor:pointer;background:#fff}
+.gcheck input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--teal)}
+.gcheck span{display:flex;flex-direction:column;gap:2px}
+.gcheck small{color:var(--muted);font-size:13px;line-height:1.4}
+.gcheck:has(input:checked){border-color:var(--teal);background:var(--teal-soft)}
+.quick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}

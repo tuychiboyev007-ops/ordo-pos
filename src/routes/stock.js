@@ -118,6 +118,7 @@ export async function removeIngredient(req, env, db, auth) {
   if (!r.length) return fail(404, 'not_found');
   await db.run('DELETE FROM recipes WHERE company_id = ? AND ingredient_id = ?', auth.c, int(b.id));
   await db.run('DELETE FROM prep_lines WHERE company_id = ? AND (ingredient_id = ? OR prep_id = ?)', auth.c, int(b.id), int(b.id));
+  await db.run('UPDATE products SET goods_id = NULL WHERE company_id = ? AND goods_id = ?', auth.c, int(b.id));
   return json({ ok: true });
 }
 
@@ -136,9 +137,13 @@ export async function recipe(req, env, db, auth) {
 
 export async function saveRecipe(req, env, db, auth) {
   const b = await body(req); const c = auth.c; const pid = int(b.product_id);
-  const p = await db.first('SELECT id FROM products WHERE company_id = ? AND id = ?', c, pid);
+  const p = await db.first('SELECT id, goods_id FROM products WHERE company_id = ? AND id = ?', c, pid);
   if (!p) return fail(404, 'not_found');
   const lines = Array.isArray(b.lines) ? b.lines.slice(0, 60) : [];
+  // Tayyor tovarga boshqa texkarta yozilsa — u endi oddiy taom (omborda 1:1 hisoblanmaydi).
+  if (p.goods_id && !(lines.length === 1 && int(lines[0].ingredient_id) === p.goods_id && q3(lines[0].qty) === 1)) {
+    await db.run('UPDATE products SET goods_id = NULL WHERE company_id = ? AND id = ?', c, pid);
+  }
   const seen = new Set();
   for (const l of lines) {
     const iid = int(l.ingredient_id); const q = q3(l.qty);

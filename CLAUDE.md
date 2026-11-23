@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 228 ta)
+npm test         # API sinovlari (PGlite, 246 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -114,6 +114,16 @@ Muhim qoidalar:
   - Yo'llar: `GET /api/stock/preps`, `POST /api/stock/prep` (`id` oddiy masalliqniki bo'lsa — zagotovkaga aylanadi),
     `POST /api/stock/prep/unset`. Panel: Ombor → Zagotovkalar (`PAGES.preps`, `prepForm`, `produceForm`); Masalliq
     kartasida «Zagotovka qilish»; taom texkartasida oddiy masalliqdek tanlanadi («zagotovka» belgisi bilan).
+- **Tayyor (dona) tovar** — Cola, suv, tayyor keladigan kotlet (egasi: "shtuk-shtuk"). Menyu → «+ Tayyor tovar» yoki taom
+  oynasidagi «Tayyor tovar — donalab sotiladi» belgisi: `POST /api/admin/product {goods: true}` shu nomli masalliqni o'zi
+  ochadi (bor bo'lsa — o'shanga bog'lanadi), texkartaga 1:1 yozadi va `products.goods_id` ni qo'yadi; oynadagi «nechta
+  bor / necha pulga olingan» — oddiy kirim hujjati. Sotuv, tannarx va hisobotlar texkarta orqali — alohida yo'l YO'Q.
+  `goods` yuborilmasa bog'lanish o'zgarmaydi; boshqa texkarta yozilsa yoki masalliq o'chirilsa bog'lanish uziladi;
+  omborda boshqa o'lchovda yuritilgan (harakati bor) masalliq bo'lsa `409 unit_mismatch` — taom yaratilmasdan OLDIN.
+  Menyu ro'yxatida «tovar» belgisi va «omborda N dona». Faqat taom tarkibida ishlatiladigan tayyor narsa (kotlet) —
+  oddiy masalliq, o'lchovi «dona» (`guessUnit` kotlet/sosiska/nagget… uchun o'zi «dona»ni tanlaydi).
+- Bosh sahifada tezkor tugmalar (`.quick`): menyuga qo'shish, masalliq, kirim, zagotovka, analitika — egasi "menyu
+  yaratish yo'q" dedi (tugma bor edi, topolmadi).
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

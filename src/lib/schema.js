@@ -110,6 +110,8 @@ export const SCHEMA = [
     prep_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
     ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
     qty DOUBLE PRECISION NOT NULL, PRIMARY KEY (prep_id, ingredient_id))`,
+  // Tayyor (dona) tovar — Cola, suv, tayyor kotlet: menyudagi taom omborda shu masalliq bo'lib hisoblanadi (texkartada 1:1).
+  `ALTER TABLE products ADD COLUMN IF NOT EXISTS goods_id INTEGER REFERENCES ingredients(id) ON DELETE SET NULL`,
   `CREATE TABLE IF NOT EXISTS suppliers (
     id SERIAL PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name TEXT NOT NULL, phone TEXT, note TEXT, debt BIGINT NOT NULL DEFAULT 0,

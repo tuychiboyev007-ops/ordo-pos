@@ -484,6 +484,62 @@ group('Zagotovka (yarim tayyor): tarkib, tayyorlash, sotuvda ayirish');
   ok(r.results[0].ok, 'sinov smenasi yopildi', r.results[0]);
 }
 
+// ---------- Tayyor (dona) tovar ----------
+group('Tayyor tovar: menyuga qo\'shilganda omborda o\'zi hisoblanadi');
+{
+  const ingOf = async (iid) => (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === iid);
+  const menuOf = async (pid) => (await call('GET', '/api/admin/menu', null, SES)).products.find((x) => x.id === pid);
+  let r = await call('POST', '/api/admin/product', { name: 'Fanta 0,5 T', price: 9000, category_id: cat, goods: true }, SES);
+  ok(r.ok && r.goods_id, 'tayyor tovar saqlandi — ombor masallig\'i o\'zi ochildi', r);
+  const fanta = r.id; const fi = r.goods_id;
+  let ing = await ingOf(fi);
+  ok(ing && ing.name === 'Fanta 0,5 T' && ing.unit === 'dona' && ing.stock === 0 && ing.grp === 'Tayyor tovar', 'omborda: shu nom, dona', ing);
+  r = await call('GET', '/api/stock/recipe?product_id=' + fanta, null, SES);
+  ok(r.lines.length === 1 && r.lines[0].ingredient_id === fi && r.lines[0].qty === 1, 'texkarta o\'zi yozildi: 1 dona');
+  await call('POST', '/api/stock/doc', { kind: 'kirim', lines: [{ ingredient_id: fi, qty: 24, price: 5500 }] }, SES);
+  let mp = await menuOf(fanta);
+  ok(mp.goods_id === fi && mp.goods_stock === 24, 'menyuda qoldig\'i ko\'rinadi', mp);
+  r = await call('GET', '/api/stock/recipe-costs', null, SES);
+  ok(r.costs[fanta]?.cost === 5500, 'tannarx kirim narxidan (5 500)', r.costs[fanta]);
+
+  const SHG = id('s'); await sync([op('shift.open', { shift_id: SHG, cash: 0 })]);
+  const O = id('o');
+  r = await sync([op('open', { type: 'olib', number: 1, shift_id: SHG }, O), op('add', { item: { id: id('i'), product_id: fanta, name: 'Fanta 0,5 T', price: 9000, qty: 3, unit: 'dona', station_id: null } }, O),
+    op('send', {}, O), op('pay', { payment: { id: id('y'), method: 'naqd', amount: 27000 } }, O), op('close', { shift_id: SHG }, O)]);
+  ok(r.results.every((x) => x.ok), '3 dona sotildi', r.results);
+  ok((await ingOf(fi)).stock === 21, 'ombordan 3 dona ayirildi', (await ingOf(fi)).stock);
+
+  // nomi o'zgarsa ombordagi nomi ham; goods yuborilmasa bog'lanish o'zgarmaydi
+  r = await call('POST', '/api/admin/product', { id: fanta, name: 'Fanta 0,5 litr T', price: 9500, category_id: cat, goods: true }, SES);
+  ok(r.ok && r.goods_id === fi && (await ingOf(fi)).name === 'Fanta 0,5 litr T', 'nom o\'zgarsa ombordagi nomi ham o\'zgaradi');
+  r = await call('POST', '/api/admin/product', { id: fanta, name: 'Fanta 0,5 litr T', price: 9500, category_id: cat }, SES);
+  ok(r.ok && (await menuOf(fanta)).goods_id === fi, 'goods yuborilmasa — bog\'lanish joyida');
+  ok((await call('GET', '/api/stock/ingredients', null, SES)).ingredients.filter((x) => /^Fanta 0,5/.test(x.name)).length === 1, 'qayta saqlash ikkinchi masalliq ochmaydi');
+
+  // mavjud masalliqqa bog'lanadi (yangi ochilmaydi); o'lchovi boshqa va harakati bor bo'lsa — rad
+  const kt = await mk('Kotlet T', 'dona');
+  await call('POST', '/api/stock/doc', { kind: 'kirim', lines: [{ ingredient_id: kt, qty: 40, price: 6000 }] }, SES);
+  r = await call('POST', '/api/admin/product', { name: 'kotlet t', price: 12000, category_id: cat, goods: true }, SES);
+  ok(r.ok && r.goods_id === kt, 'shu nomli masalliq bor — o\'shanga bog\'landi', r);
+  const before = (await call('GET', '/api/admin/menu', null, SES)).products.length;
+  r = await call('POST', '/api/admin/product', { name: 'Mol go\'shti', price: 150000, unit: 'dona', category_id: cat, goods: true }, SES);
+  ok(r.status === 409 && r.error === 'unit_mismatch', 'omborda kg bilan yuritiladigan narsa donalab sotilmaydi', r);
+  ok((await call('GET', '/api/admin/menu', null, SES)).products.length === before, 'rad etilganda taom yaratilmaydi');
+
+  // tayyor tovarlikdan chiqarish; boshqa texkarta yozilsa ham chiqadi; masalliq o'chirilsa bog'lanish uziladi
+  r = await call('POST', '/api/stock/recipe', { product_id: fanta, lines: [{ ingredient_id: fi, qty: 2 }] }, SES);
+  ok(r.ok && (await menuOf(fanta)).goods_id === null, 'boshqa texkarta yozilsa — oddiy taom');
+  r = await call('POST', '/api/admin/product', { id: fanta, name: 'Fanta 0,5 litr T', price: 9500, category_id: cat, goods: true }, SES);
+  ok(r.goods_id === fi && (await call('GET', '/api/stock/recipe?product_id=' + fanta, null, SES)).lines[0].qty === 1, 'qayta tayyor tovar: texkarta yana 1 dona');
+  r = await call('POST', '/api/admin/product', { id: fanta, name: 'Fanta 0,5 litr T', price: 9500, category_id: cat, goods: false }, SES);
+  ok(r.ok && r.goods_id === null && (await menuOf(fanta)).goods_id === null && (await ingOf(fi)).stock === 21, 'belgi olib tashlandi — masalliq va qoldiq joyida');
+  await call('POST', '/api/admin/product', { id: fanta, name: 'Fanta 0,5 litr T', price: 9500, category_id: cat, goods: true }, SES);
+  await call('POST', '/api/stock/ingredient/remove', { id: fi }, SES);
+  ok((await menuOf(fanta)).goods_id === null, 'masalliq o\'chirilsa bog\'lanish uziladi');
+  r = await sync([op('shift.close', { shift_id: SHG, counted: 0 })]);
+  ok(r.results[0].ok, 'sinov smenasi yopildi', r.results[0]);
+}
+
 // ---------- Telegram bot ----------
 group('Telegram bot: buyurtma kassaga tushadi, holat botga qaytadi');
 {
