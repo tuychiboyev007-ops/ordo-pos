@@ -17,7 +17,7 @@ import { hashPassword, makePin } from './auth.js';
 // egasi birinchi kirishda Boshqaruv → Sozlamalar'da o'zgartiradi.
 const LOCAL = (() => { try { return JSON.parse(readFileSync(new URL('../../seed.local.json', import.meta.url), 'utf8')); } catch { return {}; } })();
 
-export const MAZZA_LOGIN = { email: LOCAL.email || 'mazza@ordo.uz', password: LOCAL.password || 'ordo-ozgartiring' };
+export const MAZZA_LOGIN = { email: LOCAL.email || 'egasi@mazza.local', password: LOCAL.password || 'ordo-ozgartiring' };
 
 // Rasm — Mazza Point'ning o'z menyusidan (botdagi bilan bir xil, public/img/mazza/).
 export const IMG = {
