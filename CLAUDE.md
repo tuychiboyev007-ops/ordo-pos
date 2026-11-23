@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 328 ta)
+npm test         # API sinovlari (PGlite, 378 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -176,6 +176,19 @@ Muhim qoidalar:
   `savePrep`: `kind` yuborilmasa turi, vaqt yuborilmasa vaqt o'zgarmaydi. `GET /api/stock/docs?prep_kind=` — hujjatlarni turiga
   ajratadi. Panel: Ombor → **Marinovka** (`PAGES.marin`; `prepsPage(m, kind)` Zagotovkalar bilan umumiy, matnlar `PREP_T`),
   kartada «Turi» tugmalari, «Marinadlash» oynasida **element bo'yicha** kiritish («20 kg go'sht» → tayyor mahsulot o'zi hisoblanadi).
+- **AI yordamchi** (egasi "MCP qo'sh" dedi — so'ralganda: "AI yordamchi"): Boshqaruv → **AI yordamchi** (`PAGES.ai`, suhbat
+  brauzer xotirasida `A.ai`). `src/routes/ai.js`: `GET /api/ai/status`, `POST /api/ai/chat {messages}` (faqat rahbar).
+  Ikki rejim: **ai** — Claude (`@anthropic-ai/sdk`, standart model `claude-opus-5-5`, `ORDO_AI_MODEL` bilan almashadi; `effort: low`,
+  rad etishdagi zaxira `fallbacks: "default"` + beta `server-side-fallback-2026-07-01`; qo'lda yozilgan vosita sikli `runAgent` —
+  45 s vaqt byudjeti, 6 qadam, kunlik chegara `ai_usage` jadvali / `ORDO_AI_DAILY` (standart 100 savol/restoran)); **tez** — kalit
+  yo'q yoki AI xato berdi: `quick()` savoldagi so'zlarga qarab bitta hisobotdan qisqa javob (modelsiz), sababi `note` da.
+  Vositalar (`TOOLS`/`RUN`, 10 ta) FAQAT O'QIYDI: mavjud hisobot yo'llarini (`R.analytics`, `P.dashboard`, `W.ingredients`…) shu
+  sessiya bilan chaqiradi — raqamlar panel bilan aynan bir xil, yangi SQL yo'q. Yozadigan vosita qo'shmang.
+  **Kalit:** Vercel muhitida `ANTHROPIC_API_KEY` (egasi o'zi qo'yadi: `npx vercel env add ANTHROPIC_API_KEY production`, keyin
+  qayta deploy). Kodda, bazada va javobda kalit yo'q. Mahalliy serverda AI standart holatda o'chiq (`ORDO_AI=1` bilan yoqiladi) —
+  sinov va brauzer tekshiruvi pullik so'rov yubormasin. Sinovlar soxta mijoz bilan (`env.AI_CLIENT`); **haqiqiy API bilan
+  SINALMAGAN** (bu kompyuterda kalit yo'q) — kalit qo'yilgach birinchi savol bilan tekshiring. `vercel.json` `functions.maxDuration = 60`.
+  Javob matni panelda ekranlanadi (`aiText`: faqat **qalin** va «- » ro'yxat) — modeldan kelgan HTML ishlamaydi.
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

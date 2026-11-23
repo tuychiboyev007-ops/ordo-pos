@@ -20,6 +20,7 @@ const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 /** Boshqaruv — bo'limlar va ularning sahifalari; hammasi yon panelda doim ko'rinib turadi. */
 const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
+  ['ai', 'spark', 'AI yordamchi', [['ai', 'AI yordamchi']]],
   ['rep', 'chart', 'Hisobotlar', [['report', 'Umumiy hisobot'], ['profit', 'Foyda'], ['analytics', 'Savdo analitikasi'], ['diag', 'Diagnostika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
   ['stock', 'box', 'Ombor', [['stock', 'Elementlar'], ['preps', 'Zagotovkalar'], ['marin', 'Marinovka'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
   ['menu', 'list', 'Menyu', [['menu', 'Menyu'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
@@ -1058,6 +1059,58 @@ PAGES.diag = async (m) => {
     <p class="hint" style="margin-top:14px">Ball: 100 dan har muammo uchun 12, har ogohlantirish uchun 5 ball ayriladi. Tuzatgach «Qayta tekshirish»ni bosing.</p>`;
   $('#again').onclick = () => show('diag');
   $$('[data-go]', m).forEach((b) => b.onclick = () => show(b.dataset.go));
+};
+
+// =================== AI yordamchi ===================
+const AI_SUG = ['Bugun savdo qancha?', 'Shu hafta eng ko\'p sotilgan taomlar', 'Nima tugayapti?', 'Kimda qarzimiz bor?', 'Shu oy rasxod qancha?', 'Shu oy eng foydali taomlar', 'Diagnostika: nimani tuzatish kerak?'];
+/** Javob matni: faqat **qalin** va «- » ro'yxat. Avval ekranlanadi — javobdagi matn hech qachon HTML bo'lib ishlamaydi. */
+function aiText(t) {
+  let html = ''; let ul = false;
+  for (const ln of esc(t).split('\n')) {
+    const b = ln.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); const li = /^\s*[-•]\s+/.test(b);
+    if (li !== ul) { html += li ? '<ul>' : '</ul>'; ul = li; }
+    html += li ? `<li>${b.replace(/^\s*[-•]\s+/, '')}</li>` : b.trim() ? `<p>${b}</p>` : '';
+  }
+  return html + (ul ? '</ul>' : '');
+}
+PAGES.ai = async (m) => {
+  const st = await S('/api/ai/status');
+  A.ai = A.ai || [];
+  const foot = (left) => (st.ready ? `AI faqat o'qiydi — hech narsani o'zgartira olmaydi. Bugun ${left == null ? `${st.used}/${st.limit} savol berildi` : `yana ${left} ta savol qoldi`}.` : 'Yordamchi faqat o\'qiydi — hech narsani o\'zgartira olmaydi.');
+  m.innerHTML = head('AI yordamchi', 'Restoraningiz haqida savol bering — javob kassadagi jonli ma\'lumotdan olinadi', `<button class="btn" id="ainew">${icon('plus')}Yangi suhbat</button>`)
+    + `${st.ready ? '' : `<div class="note ai-mode">${icon('spark')}<span><b>Hozir tezkor javob rejimi.</b> Savdo, ombor, qarz, rasxod, smena va diagnostika haqidagi savollarga kassadagi ma'lumotdan darhol javob beraman. Erkin savollar va tahlil — AI ulangach${st.owner ? ' (serverga Anthropic API kaliti qo\'yiladi, shunda o\'zi yoqiladi)' : ''}.</span></div>`}
+    <div class="card ai"><div class="ai-log" id="ailog"></div>
+      <div class="ai-sug" id="aisug">${AI_SUG.map((q) => `<button type="button" class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      <form class="ai-in" id="aiform"><textarea class="input" id="aiq" rows="1" maxlength="2000" placeholder="Savolingizni yozing — masalan: kecha qancha savdo bo'ldi?"></textarea><button class="btn primary" id="aisend">${icon('send')}Yuborish</button></form>
+      <div class="hint ai-foot" id="aifoot">${foot()}</div></div>`;
+  const log = $('#ailog'); let busy = false;
+  const draw = () => {
+    if (!document.body.contains(log)) return;
+    const who = `<div class="av">${icon('spark')}</div>`;
+    log.innerHTML = A.ai.length ? A.ai.map((x) => (x.role === 'user' ? `<div class="ai-m me"><div class="b">${esc(x.content)}</div></div>`
+      : `<div class="ai-m">${who}<div class="b ${x.err ? 'err' : ''}">${aiText(x.content)}${x.note ? `<div class="ai-note">${esc(x.note)} — tezkor javob berildi</div>` : ''}</div></div>`)).join('')
+      + (busy ? `<div class="ai-m">${who}<div class="b ai-wait"><i></i><i></i><i></i></div></div>` : '')
+      : `<div class="ai-empty">${icon('spark')}<b>Nima haqida bilmoqchisiz?</b><span>Pastdagi savollardan birini bosing yoki o'zingiz yozing.</span></div>`;
+    log.scrollTop = log.scrollHeight;
+    $('#ainew').disabled = !A.ai.length || busy; $('#aisend').disabled = busy;
+  };
+  const send = async (text) => {
+    const q = String(text || '').trim(); if (!q || busy) return;
+    A.ai.push({ role: 'user', content: q }); busy = true; $('#aiq').value = ''; $('#aiq').style.height = ''; draw();
+    try {
+      // AI bir necha hisobotni o'qib javob yozadi — oddiy so'rovdan uzoqroq kutiladi.
+      const r = await post('/api/ai/chat', { messages: A.ai.filter((x) => !x.err).slice(-12).map((x) => ({ role: x.role, content: x.content })) }, { auth: 'session', timeout: 65000 });
+      A.ai.push({ role: 'assistant', content: r.reply, note: r.note || '' });
+      if (r.mode === 'ai' && r.left != null && $('#aifoot')) $('#aifoot').textContent = foot(r.left);
+    } catch (e) { A.ai.push({ role: 'assistant', content: e?.message || 'Javob olinmadi', err: true }); }
+    busy = false; draw(); if (A.page === 'ai') $('#aiq')?.focus();
+  };
+  $('#aiform').onsubmit = (e) => { e.preventDefault(); send($('#aiq').value); };
+  $('#aiq').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($('#aiq').value); } };
+  $('#aiq').oninput = (e) => { e.target.style.height = ''; e.target.style.height = Math.min(140, e.target.scrollHeight) + 'px'; };
+  $$('#aisug [data-q]').forEach((b) => b.onclick = () => send(b.dataset.q));
+  $('#ainew').onclick = () => { A.ai = []; draw(); $('#aiq').focus(); };
+  draw(); $('#aiq').focus();
 };
 
 // =================== Zagotovkalar va Marinovka (yarim tayyor mahsulot) ===================

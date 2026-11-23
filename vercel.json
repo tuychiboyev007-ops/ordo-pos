@@ -5,6 +5,7 @@
   "outputDirectory": "public",
   "cleanUrls": true,
   "regions": ["fra1"],
+  "functions": { "api/router.js": { "maxDuration": 60 } },
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/router?__p=:path*" },
     { "source": "/boshqaruv", "destination": "/admin" }

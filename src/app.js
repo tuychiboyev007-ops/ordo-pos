@@ -13,6 +13,7 @@ import * as R from './routes/reports.js';
 import * as W from './routes/stock.js';
 import * as P from './routes/money.js';
 import * as B from './routes/bot.js';
+import * as AI from './routes/ai.js';
 
 const ROUTES = {
   'POST /api/setup': ['open', A.setup],
@@ -60,6 +61,8 @@ const ROUTES = {
   'GET /api/reports/order': ['manager', R.orderLog],
   'POST /api/order/pay-method': ['manager', S.changePayMethod],
   'GET /api/dashboard': ['manager', P.dashboard],
+  'GET /api/ai/status': ['manager', AI.status],
+  'POST /api/ai/chat': ['manager', AI.chat],
 
   'GET /api/stock/ingredients': ['manager', W.ingredients],
   'GET /api/stock/ingredient': ['manager', W.ingredientInfo],

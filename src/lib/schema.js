@@ -116,6 +116,9 @@ export const SCHEMA = [
     qty DOUBLE PRECISION NOT NULL, PRIMARY KEY (prep_id, ingredient_id))`,
   // Tayyor (dona) tovar — Cola, suv, tayyor kotlet: menyudagi taom omborda shu masalliq bo'lib hisoblanadi (texkartada 1:1).
   `ALTER TABLE products ADD COLUMN IF NOT EXISTS goods_id INTEGER REFERENCES ingredients(id) ON DELETE SET NULL`,
+  // AI yordamchi: restoran boshiga kunlik savollar soni va sarflangan tokenlar (kunlik chegara shunga tayanadi).
+  `CREATE TABLE IF NOT EXISTS ai_usage (company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE, day DATE NOT NULL,
+    n INTEGER NOT NULL DEFAULT 0, tokens_in BIGINT NOT NULL DEFAULT 0, tokens_out BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (company_id, day))`,
   `CREATE TABLE IF NOT EXISTS suppliers (
     id SERIAL PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name TEXT NOT NULL, phone TEXT, note TEXT, debt BIGINT NOT NULL DEFAULT 0,

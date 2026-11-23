@@ -16,7 +16,10 @@ import { seedMazza } from '../src/lib/mazza.js';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PUB = join(ROOT, 'public');
 const PORT = Number(process.env.PORT || 4310);
-const env = { AUTH_SECRET: process.env.AUTH_SECRET || 'dev-secret-ordo-0123456789', SETUP_OPEN: process.env.SETUP_OPEN || '' };
+// Mahalliy nusxada AI standart holatda O'CHIQ (tezkor javob rejimi): kalit faqat ORDO_AI=1 bilan ataylab yoqilganda o'qiladi —
+// sinov va brauzer tekshiruvlari tasodifan pullik so'rov yubormasin.
+const env = { AUTH_SECRET: process.env.AUTH_SECRET || 'dev-secret-ordo-0123456789', SETUP_OPEN: process.env.SETUP_OPEN || '',
+  ANTHROPIC_API_KEY: process.env.ORDO_AI === '1' ? process.env.ANTHROPIC_API_KEY || '' : '', ORDO_AI_MODEL: process.env.ORDO_AI_MODEL || '', ORDO_AI_DAILY: process.env.ORDO_AI_DAILY || '' };
 
 const dataDir = process.env.ORDO_DATA || join(ROOT, '.data', 'pg');
 if (process.argv.includes('--reset-demo')) await rm(join(ROOT, '.data'), { recursive: true, force: true });

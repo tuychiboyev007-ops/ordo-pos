@@ -57,7 +57,9 @@ export default async function handler(req, res) {
     const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
     const r = new Request(`https://${host}${restorePath(req.url)}`, { method: req.method, headers, body: await readBody(req) });
     const db = await getDb();
-    const out = await handle(r, { AUTH_SECRET: process.env.AUTH_SECRET, SETUP_OPEN: '' }, db);
+    // AI yordamchi: kalit faqat shu yerda, muhit o'zgaruvchisidan o'qiladi (bazaga ham, javobga ham chiqmaydi).
+    const out = await handle(r, { AUTH_SECRET: process.env.AUTH_SECRET, SETUP_OPEN: '', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+      ORDO_AI_MODEL: process.env.ORDO_AI_MODEL || '', ORDO_AI_DAILY: process.env.ORDO_AI_DAILY || '' }, db);
     res.statusCode = out.status;
     for (const [k, v] of out.headers) if (k !== 'transfer-encoding') res.setHeader(k, v);
     if (!out.headers.has('cache-control')) res.setHeader('cache-control', 'no-store');

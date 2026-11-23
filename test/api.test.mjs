@@ -992,6 +992,122 @@ group('Marinovka: zagotovkaning turi, marinadlanish vaqti, partiya holati');
   ok(r.ok && back.prep === false && back.prep_kind === '' && near(back.stock, 22), 'oddiy elementga qaytarilsa turi tozalanadi, qoldig\'i qoladi', back);
 }
 
+// ---------- AI yordamchi ----------
+group('AI yordamchi: tezkor javob (kalitsiz), vositalar, Claude bilan suhbat (soxta mijoz)');
+{
+  const AI = await import('../src/routes/ai.js');
+  const ask = (text, tok = SES, extra = []) => call('POST', '/api/ai/chat', { messages: [...extra, { role: 'user', content: text }] }, tok);
+  r = await call('GET', '/api/ai/status', null, SES);
+  ok(r.ok && r.ready === false && r.model === null && r.limit === 100 && r.used === 0, 'kalit yo\'q — AI ulanmagan, lekin yo\'l ishlaydi', r);
+  r = await call('GET', '/api/ai/status', null, DEV);
+  ok(r.status === 401, 'faqat rahbar sessiyasi (qurilma belgisi yetmaydi)', r.status);
+  r = await ask('', SES);
+  ok(r.status === 400 && r.error === 'empty', 'bo\'sh savol rad etiladi', r);
+  r = await call('POST', '/api/ai/chat', { messages: [{ role: 'assistant', content: 'salom' }] }, SES);
+  ok(r.status === 400, 'oxirgi xabar foydalanuvchiniki bo\'lishi shart', r.status);
+
+  // Tezkor javob: savoldagi so'zlarga qarab hisobot
+  r = await ask('Bugun savdo qancha?');
+  ok(r.ok && r.mode === 'tez' && /savdo [\d ]+ so'm/.test(r.reply) && r.tools[0] === 'sales_report', 'savdo savoli — raqam bilan javob', r);
+  r = await ask('Nima tugayapti?');
+  ok(r.mode === 'tez' && /Kam qolgan: \d+ ta element/.test(r.reply) && r.tools[0] === 'stock', 'ombor savoli', r.reply);
+  r = await ask('Kimda qarzimiz bor?');
+  ok(/Mijozlar bizga qarz/.test(r.reply) && /yetkazib beruvchilarga qarzmiz/.test(r.reply) && r.tools[0] === 'debts', 'qarz savoli', r.reply);
+  r = await ask('Shu oy rasxod qancha?');
+  ok(/Rasxod \(shu oy/.test(r.reply) && r.tools[0] === 'expenses', 'rasxod savoli — standart davr shu oy', r.reply);
+  r = await ask('Shu oy eng ko\'p sotilgan taomlar');
+  ok(/eng ko'p sotilgan taomlar/.test(r.reply) && /1\. /.test(r.reply), 'eng ko\'p sotilganlar ro\'yxati', r.reply);
+  r = await ask('Diagnostika: nimani tuzatish kerak?');
+  ok(/Diagnostika: \d+ ball/.test(r.reply) && r.tools[0] === 'diagnostics', 'diagnostika', r.reply);
+  r = await ask('Bugungi smenalar');
+  ok(/Smenalar \(bugun\)/.test(r.reply), 'smenalar', r.reply);
+  r = await ask('Shu oy bekor qilingan taomlar');
+  ok(/bekor qilingan taomlar \d+ ta/.test(r.reply) && r.tools[0] === 'cancellations', 'bekor qilishlar', r.reply);
+  r = await ask('Shu oy xodimlar savdosi');
+  ok(/xodimlar bo'yicha savdo/.test(r.reply), 'xodimlar', r.reply);
+
+  // Davrni aniqlash
+  const td = today(); const sh = (d, k) => new Date(Date.parse(d + 'T00:00:00Z') + k * 864e5).toISOString().slice(0, 10);
+  let p = AI.periodOf('kecha savdo qancha');
+  ok(p.from === sh(td, -1) && p.to === sh(td, -1), 'kecha', p);
+  p = AI.periodOf('shu hafta'); const dow = new Date(td + 'T00:00:00Z').getUTCDay();
+  ok(p.to === td && p.from === sh(td, -((dow + 6) % 7)), 'shu hafta — dushanbadan bugungacha', p);
+  p = AI.periodOf('o\'tgan hafta savdo');
+  ok(p.to === sh(td, -((dow + 6) % 7) - 1) && p.from === sh(p.to, -6), 'o\'tgan hafta — to\'liq 7 kun', p);
+  p = AI.periodOf('oʻtgan oy foyda');
+  ok(p.to === sh(td.slice(0, 8) + '01', -1) && p.from === p.to.slice(0, 8) + '01', 'o\'tgan oy (boshqa tutuq belgisi bilan ham)', p);
+  p = AI.periodOf('7 kun ichida');
+  ok(p.from === sh(td, -6) && p.to === td, 'so\'nggi 7 kun', p);
+  ok(AI.periodOf('savdo').from === td && AI.periodOf('rasxod', 'month').from === td.slice(0, 8) + '01', 'davr aytilmasa — standart');
+
+  // Vositalar: hammasi ishlaydi, faqat o'qiydi
+  const ctx = { env, db, auth: { c: (await db.first('SELECT company_id AS c FROM users WHERE id = ? /* tenant:global */', OWNER)).c, u: OWNER, r: 'owner' } };
+  const before = (await db.first('SELECT COUNT(*)::int AS n FROM stock_moves WHERE company_id = ?', ctx.auth.c)).n;
+  for (const tl of AI.TOOLS) {
+    let res; let err = null;
+    try { res = await AI.runTool(tl.name, {}, ctx); } catch (e) { err = e.message; }
+    ok(!err && res && typeof res === 'object' && JSON.stringify(res).length > 10, `vosita ${tl.name} ishlaydi`, err);
+  }
+  const sr = await AI.runTool('sales_report', { from: td.slice(0, 8) + '01', to: td }, ctx);
+  const an = await call('GET', `/api/reports/analytics?from=${td.slice(0, 8) + '01'}&to=${td}`, null, SES);
+  ok(sr.totals.revenue === an.cur.revenue && sr.totals.orders === an.cur.orders && sr.totals.revenue > 0, 'AI ko\'radigan savdo — paneldagi bilan aynan bir xil', [sr.totals.revenue, an.cur.revenue]);
+  const sw = await AI.runTool('sales_report', { from: td, to: '2020-01-01' }, ctx);
+  ok(sw.period.from === '2020-01-01' || sw.period.from <= sw.period.to, 'teskari sanalar tartibga solinadi, oraliq cheklanadi', sw.period);
+  const sx = await AI.runTool('stock', { filter: 'all', query: 'ZZZ yo\'q narsa' }, ctx);
+  ok(sx.matched === 0 && sx.total_elements > 0, 'ombor — nom bo\'yicha qidiruv', sx.matched);
+  let bad = null; try { await AI.runTool('drop_tables', {}, ctx); } catch (e) { bad = e.message; }
+  ok(/Bunday vosita yo'q/.test(bad || ''), 'noma\'lum vosita rad etiladi', bad);
+  const after = (await db.first('SELECT COUNT(*)::int AS n FROM stock_moves WHERE company_id = ?', ctx.auth.c)).n;
+  ok(before === after, 'vositalar bazaga hech narsa yozmaydi', [before, after]);
+
+  // Claude bilan suhbat — SOXTA mijoz (haqiqiy API chaqirilmaydi)
+  const calls = [];
+  const script = (steps) => { let i = 0; return { beta: { messages: { create: async (params, opts) => { calls.push({ params: JSON.parse(JSON.stringify(params)), opts }); const st = steps[Math.min(i++, steps.length - 1)]; if (st instanceof Error) throw st; return st; } } } }; };
+  const useSales = { stop_reason: 'tool_use', usage: { input_tokens: 900, output_tokens: 40, cache_read_input_tokens: 100 },
+    content: [{ type: 'thinking', thinking: '', signature: 'sig' }, { type: 'tool_use', id: 'tu1', name: 'sales_report', input: { from: td, to: td } }, { type: 'tool_use', id: 'tu2', name: 'nope', input: {} }] };
+  const final = { stop_reason: 'end_turn', usage: { input_tokens: 1500, output_tokens: 60 }, content: [{ type: 'text', text: 'Bugun savdo **1 000 so\'m**.' }] };
+  env.AI_CLIENT = script([useSales, final]);
+  r = await call('GET', '/api/ai/status', null, SES);
+  ok(r.ready === true && r.model === 'claude-opus-5-5', 'mijoz bor — AI tayyor, standart model', r);
+  r = await ask('Bugun savdo qancha?', SES, [{ role: 'assistant', content: 'boshida turgan yordamchi xabari tashlanadi' }, { role: 'user', content: 'Salom' }, { role: 'assistant', content: 'Salom! Nima haqida so\'raysiz?' }]);
+  ok(r.ok && r.mode === 'ai' && r.reply === 'Bugun savdo **1 000 so\'m**.' && r.tools.join() === 'sales_report' && r.left === 99, 'AI javobi, ishlatilgan vosita va qolgan savollar', r);
+  const c1 = calls[0].params; const c2 = calls[1].params;
+  ok(c1.model === 'claude-opus-5-5' && c1.max_tokens === 16000 && c1.fallbacks === 'default' && c1.betas.includes('server-side-fallback-2026-07-01') && c1.output_config.effort === 'low' && !('thinking' in c1) && !('temperature' in c1) && !('tool_choice' in c1),
+    'so\'rov: model, rad etishdagi zaxira, effort; thinking/temperature/majburiy vosita yuborilmaydi', Object.keys(c1));
+  ok(c1.tools.length === AI.TOOLS.length && c1.system.length === 2 && c1.system[0].cache_control?.type === 'ephemeral' && !/\d{4}-\d{2}-\d{2}/.test(c1.system[0].text) && c1.system[1].text.includes(td),
+    'tizim matni: barqaror qismi keshlanadi, sana undan keyin', c1.system[1]?.text);
+  ok(c1.messages.length === 3 && c1.messages[0].role === 'user' && c1.messages[0].content === 'Salom' && c1.messages[2].content === 'Bugun savdo qancha?', 'tarix tozalanadi: birinchi xabar foydalanuvchiniki', c1.messages.map((m) => m.role));
+  ok(calls[0].opts?.timeout > 1000 && calls[0].opts.timeout <= 45000, 'har so\'rovga vaqt chegarasi beriladi', calls[0].opts);
+  const asst = c2.messages[3]; const tr = c2.messages[4];
+  ok(asst.role === 'assistant' && asst.content.length === 3 && asst.content[0].type === 'thinking' && asst.content[0].signature === 'sig', 'model javobi (o\'ylash bloki bilan) o\'zgarishsiz qaytariladi', asst.content.map((b) => b.type));
+  ok(tr.role === 'user' && tr.content.length === 2 && tr.content.every((b) => b.type === 'tool_result') && tr.content[0].tool_use_id === 'tu1' && JSON.parse(tr.content[0].content).totals.revenue >= 0 && tr.content[1].is_error === true,
+    'ikkala vosita natijasi BITTA xabarda: biri ma\'lumot, noma\'lumi xato belgisi bilan', tr.content.map((b) => [b.tool_use_id, b.is_error]));
+  let u = await db.first('SELECT n, tokens_in::int AS i, tokens_out::int AS o FROM ai_usage WHERE company_id = ?', ctx.auth.c);
+  ok(u.n === 1 && u.i === 2500 && u.o === 100, 'sarf yozildi: 1 savol, tokenlar (kesh bilan)', u);
+
+  // Rad etish, xato, cheksiz vosita so'rash, kunlik chegara
+  env.AI_CLIENT = script([{ stop_reason: 'refusal', stop_details: { type: 'refusal', category: null }, content: [], usage: { input_tokens: 10, output_tokens: 0 } }]);
+  r = await ask('...');
+  ok(r.mode === 'ai' && /javob bera olmayman/.test(r.reply), 'model rad etsa — tushunarli javob', r.reply);
+  env.AI_CLIENT = script([new Error('tarmoq uzildi')]);
+  r = await ask('Bugun savdo qancha?');
+  ok(r.ok && r.mode === 'tez' && /savdo [\d ]+ so'm/.test(r.reply) && r.note === 'AI javob bermadi', 'AI xato bersa — tezkor javob va sababi (foydalanuvchi javobsiz qolmaydi)', r);
+  u = await db.first('SELECT n FROM ai_usage WHERE company_id = ?', ctx.auth.c);
+  ok(u.n === 2, 'xato bo\'lgan savol chegaraga sanalmaydi', u.n);
+  calls.length = 0;
+  env.AI_CLIENT = script([{ stop_reason: 'tool_use', usage: { input_tokens: 5, output_tokens: 5 }, content: [{ type: 'tool_use', id: 'tx', name: 'debts', input: {} }] }]);
+  r = await ask('aylanib qol');
+  ok(r.mode === 'ai' && /ulgurmadim/.test(r.reply) && calls.length === 6, 'model to\'xtamasa — 6 qadamdan keyin to\'xtatiladi', [r.reply, calls.length]);
+  env.AI_CLIENT = script([final]); env.ORDO_AI_DAILY = '4'; env.ORDO_AI_MODEL = 'claude-haiku-5-5'; calls.length = 0;
+  r = await ask('yana bir savol');
+  ok(r.mode === 'ai' && r.left === 0 && calls[0].params.model === 'claude-haiku-5-5', 'model va chegara muhit sozlamasidan', [r.left, calls[0]?.params.model]);
+  r = await ask('chegara tugadi');
+  ok(r.status === 429 && r.error === 'ai_limit' && calls.length === 1, 'kunlik chegara tugasa — 429, AI chaqirilmaydi', r);
+  delete env.AI_CLIENT; delete env.ORDO_AI_DAILY; delete env.ORDO_AI_MODEL;
+  r = await ask('Bugun savdo qancha?');
+  ok(r.mode === 'tez', 'kalit olinsa — yana tezkor javob', r.mode);
+}
+
 group('Restoranlar aralashmaydi');
 await call('POST', '/api/setup', { name: 'Boshqa kafe', email: 'b@t.uz', password: 'parol12345', pin: '1111' });
 const DEV2 = (await call('POST', '/api/device/login', { email: 'b@t.uz', password: 'parol12345' })).token;

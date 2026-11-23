@@ -11,6 +11,7 @@
     "agent": "node agent/ordo-agent.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
