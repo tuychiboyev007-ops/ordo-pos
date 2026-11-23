@@ -59,6 +59,7 @@ const ROUTES = {
   'GET /api/dashboard': ['manager', P.dashboard],
 
   'GET /api/stock/ingredients': ['manager', W.ingredients],
+  'GET /api/stock/ingredient': ['manager', W.ingredientInfo],
   'POST /api/stock/ingredient': ['manager', W.saveIngredient],
   'POST /api/stock/ingredient/remove': ['manager', W.removeIngredient],
   'GET /api/stock/preps': ['manager', W.preps],

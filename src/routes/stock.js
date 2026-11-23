@@ -93,6 +93,32 @@ export async function unprep(req, env, db, auth) {
   return json({ ok: true });
 }
 
+/**
+ * Element kartasi (tahrirlash oynasi uchun): qoldiq va narx, qaysi taom va zagotovkalarda ishlatiladi,
+ * oxirgi kirim (qachon, necha pulga, kimdan), menyuda tayyor tovar bo'lib sotilsa — o'sha taom.
+ */
+export async function ingredientInfo(req, env, db, auth) {
+  const c = auth.c; const id = int(new URL(req.url).searchParams.get('id'));
+  const i = await db.first('SELECT id, name, unit, stock, cost, min_stock, grp, prep, yield FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, id);
+  if (!i) return fail(404, 'not_found');
+  const dishes = await db.all(`SELECT p.id, p.name, p.price::float8 AS price, r.qty FROM recipes r JOIN products p ON p.id = r.product_id AND p.company_id = r.company_id
+    WHERE r.company_id = ? AND r.ingredient_id = ? AND p.active = true ORDER BY p.name`, c, id);
+  const inPreps = await db.all(`SELECT g.id, g.name, g.unit, g.yield, l.qty FROM prep_lines l JOIN ingredients g ON g.id = l.prep_id AND g.company_id = l.company_id
+    WHERE l.company_id = ? AND l.ingredient_id = ? AND g.active = true ORDER BY g.name`, c, id);
+  const last = await db.first(`SELECT m.at, m.qty, m.cost, s.name AS supplier FROM stock_moves m LEFT JOIN stock_docs d ON d.id = m.doc_id AND d.company_id = m.company_id
+    LEFT JOIN suppliers s ON s.id = d.supplier_id AND s.company_id = d.company_id WHERE m.company_id = ? AND m.ingredient_id = ? AND m.kind = 'kirim' ORDER BY m.at DESC, m.id DESC LIMIT 1`, c, id);
+  const goods = await db.first('SELECT id, name, price::float8 AS price FROM products WHERE company_id = ? AND goods_id = ? AND active = true ORDER BY id LIMIT 1', c, id);
+  const moved = await db.first('SELECT COUNT(*)::int AS n FROM stock_moves WHERE company_id = ? AND ingredient_id = ?', c, id);
+  const ic = i.prep ? await ingCosts(db, c) : null;
+  const cost = i.prep && ic ? ic.get(id) || n(i.cost) : n(i.cost);
+  return json({ ok: true,
+    ingredient: { id: i.id, name: i.name, unit: i.unit, grp: i.grp, prep: !!i.prep, stock: n(i.stock), cost, min_stock: n(i.min_stock), value: Math.round(Math.max(0, n(i.stock)) * cost), moves: moved.n },
+    dishes: dishes.map((d) => ({ id: d.id, name: d.name, price: Math.round(n(d.price)), qty: n(d.qty) })),
+    preps: inPreps.map((g) => ({ id: g.id, name: g.name, unit: g.unit, yield: n(g.yield) || 1, qty: n(g.qty) })),
+    last_in: last ? { at: last.at, qty: n(last.qty), price: Math.round(n(last.cost)), supplier: last.supplier || null } : null,
+    goods: goods ? { id: goods.id, name: goods.name, price: Math.round(n(goods.price)) } : null });
+}
+
 export async function saveIngredient(req, env, db, auth) {
   const b = await body(req); const c = auth.c; const id = int(b.id, 0);
   const name = str(b.name, 80); if (!name) return fail(400, 'need_name', 'Nomi kerak');

@@ -540,6 +540,24 @@ group('Tayyor tovar: menyuga qo\'shilganda omborda o\'zi hisoblanadi');
   ok(r.results[0].ok, 'sinov smenasi yopildi', r.results[0]);
 }
 
+// ---------- Element kartasi ----------
+group('Element kartasi: qayerda ishlatiladi, oxirgi kirim');
+{
+  let r = await call('GET', '/api/stock/ingredient?id=' + beef, null, SES);
+  ok(r.ok && r.ingredient.id === beef && r.ingredient.unit === 'kg' && r.ingredient.moves > 0 && r.ingredient.value === Math.round(Math.max(0, r.ingredient.stock) * r.ingredient.cost), 'karta: qoldiq, narx, qiymat', r.ingredient);
+  ok(r.dishes.some((d) => d.id === burger && d.qty === 0.17), 'qaysi taomda va qancha ishlatilishi', r.dishes);
+  ok(r.last_in && r.last_in.price === 120000 && r.last_in.qty === 10, 'oxirgi kirim narxi va miqdori', r.last_in);
+  r = await call('GET', '/api/stock/ingredient?id=' + bun, null, SES);
+  ok(r.ok && r.goods === null && Array.isArray(r.preps), 'tayyor tovar emas — goods bo\'sh');
+  const gp = await call('POST', '/api/admin/product', { name: 'Suv Karta T', price: 4000, category_id: cat, goods: true }, SES);
+  r = await call('GET', '/api/stock/ingredient?id=' + gp.goods_id, null, SES);
+  ok(r.goods?.id === gp.id && r.goods.price === 4000 && r.last_in === null && r.ingredient.moves === 0, 'tayyor tovar: menyudagi taomi ko\'rinadi, kirim hali yo\'q', r);
+  r = await call('GET', '/api/stock/ingredient?id=999999', null, SES);
+  ok(r.status === 404, 'yo\'q element — 404', r.status);
+  r = await call('GET', '/api/stock/ingredient?id=' + beef, null, DEV);
+  ok(r.status === 401 || r.status === 403, 'faqat rahbar', r.status);
+}
+
 // ---------- Telegram bot ----------
 group('Telegram bot: buyurtma kassaga tushadi, holat botga qaytadi');
 {
