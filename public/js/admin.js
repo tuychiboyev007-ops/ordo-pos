@@ -92,7 +92,7 @@ function shell() {
   const page = location.hash.slice(1);
   if (sectionOf(page)) A.page = page;
   $('#app').innerHTML = `<button class="a-burger" id="burger" aria-label="Menyu">${icon('list')}<span>Menyu</span></button><div class="a-shade" id="shade"></div><div class="a-shell"><aside class="a-side" id="side">
-    <div class="brand"><div class="logo"><span class="mk">${MARK}</span><b>ordo</b></div><small>${esc(A.boot?.settings?.name || A.boot?.company?.name || '')}</small></div>
+    <div class="brand"><div class="logo" id="home" role="button" tabindex="0" title="Bosh sahifa"><span class="mk">${MARK}</span><b>ordo</b></div><small>${esc(A.boot?.settings?.name || A.boot?.company?.name || '')}</small></div>
     <nav class="a-nav" id="nav"></nav>
     <div class="a-foot"><span class="av" style="background:var(--ink)">${esc(initials(A.user?.name))}</span><span class="nm">${esc(A.user?.name || '')}<small>${esc(ROLE_NAMES[A.user?.role] || '')}</small></span>
       <a class="icon-btn" href="/kassa" title="Kassaga o'tish">${icon('cash')}</a><button class="icon-btn" id="out" title="Chiqish">${icon('out')}</button></div></aside><main class="a-main" id="main"></main></div>`;
@@ -101,6 +101,9 @@ function shell() {
   $('#burger').onclick = () => side(!$('#side').classList.contains('open'));
   $('#shade').onclick = () => side(false);
   $('#nav').addEventListener('click', (e) => { if (e.target.closest('[data-page]')) side(false); });
+  // Logo — istalgan sahifadan Bosh sahifaga.
+  const home = () => { side(false); show('dash'); };
+  $('#home').onclick = home; $('#home').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); home(); } };
   $('#main').addEventListener('click', (e) => { const b = e.target.closest('[data-sub]'); if (b) show(b.dataset.sub); });
   nav(); show(A.page);
   // Manzildagi #bo'lim qo'lda o'zgartirilsa yoki "orqaga" bosilsa ham o'sha bo'lim ochilsin.

@@ -48,7 +48,7 @@ function renderRail() {
   const count = { zal: open.filter((o) => o.type === 'zal').length, olib: open.filter((o) => listType(o) === 'olib').length,
     yetkazish: open.filter((o) => listType(o) === 'yetkazish').length, eslatma: notes().length };
   const active = ui.view === 'order' ? ui.back : ui.view;
-  $('#rail').innerHTML = `<div class="mk">${MARK}</div>
+  $('#rail').innerHTML = `<div class="mk" data-nav="zal" role="button" title="Bosh sahifa — zal">${MARK}</div>
     ${NAV.map(([k, ic, l]) => `<button data-nav="${k}" class="${active === k ? 'on' : ''}">${icon(ic)}${esc(l)}${count[k] ? `<span class="n">${count[k]}</span>` : ''}</button>`).join('')}
     <div class="sp"></div>
     ${isManager() ? `<button data-nav="admin">${icon('gear')}Boshqaruv</button>` : ''}
@@ -1251,7 +1251,7 @@ function showFailed() {
 
 // =================== Hodisalar ===================
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('button,[data-line],[data-h],[data-order]');
+  const t = e.target.closest('button,[data-nav],[data-line],[data-h],[data-order]');   // [data-nav] — chapdagi logo ham (zalga qaytaradi)
   if (!t || !S.user || t.closest('.modal') || t.closest('.lock')) return;
   const d = t.dataset;
   idle();

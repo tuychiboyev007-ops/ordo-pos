@@ -4,7 +4,7 @@ html,body{overflow:hidden}
 body{user-select:none}
 .k-shell{display:flex;height:100vh}
 .rail{width:84px;flex:none;background:var(--teal);color:#c9cfdb;display:flex;flex-direction:column;align-items:center;padding:14px 0 10px;gap:4px}
-.rail .mk{display:flex;color:#fff;margin:4px 0 16px}
+.rail .mk{display:flex;color:#fff;margin:4px 0 16px;cursor:pointer}
 .rail .mk svg{width:42px;height:42px}
 .rail button{width:72px;min-height:64px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:11.5px;font-weight:500;color:#c3c9d6;position:relative;line-height:1.1;text-align:center}
 .rail button svg.i{width:23px;height:23px}
