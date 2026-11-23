@@ -274,3 +274,9 @@ details.more summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:
 @media (max-width:820px){.lines.op .ln{grid-template-columns:1fr 1fr;row-gap:6px;padding:8px 0;border-bottom:1px solid var(--line-2)}.lines.op .ln.h{display:none}.lines.op .ln .nm{grid-column:1/-1}.lines.op .ln>span:nth-child(2){grid-column:1/-1;text-align:left;font-size:13px;margin-top:-4px}.lines.op .ln>span:nth-child(2)::before{content:"Tizimda: ";color:var(--muted)}.lines.op .ln .sum{grid-column:1/-1;text-align:left;color:var(--muted);font-weight:500}}
 
 .modal .seg[data-of]{max-width:100%;overflow-x:auto;scrollbar-width:none}.modal .seg[data-of] button{white-space:nowrap;flex:none}
+
+/* Ma'lumotni tozalash */
+.danger-zone{border-color:#efb9b9}
+.tcards.two{grid-template-columns:1fr 1fr}
+.ubox.full{max-height:none}
+@media (max-width:820px){.tcards.two{grid-template-columns:1fr}}

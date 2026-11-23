@@ -164,6 +164,10 @@ async function pull() {
   S.stop = new Set(r.stop);
   S.shift = r.shift || null;
   S.notes = r.notes || [];
+  // Egasi ma'lumotni tozalagan: bu qurilmadagi eski (yopilgan) buyurtmalar tarixi, raqam hisoblagichi va rad etilgan amallar ham tashlanadi.
+  if (r.reset_at && LS.get('ordo.resetAt', null) !== r.reset_at) {
+    S.recent = []; S.failed = []; LS.set('ordo.failed', []); LS.set('ordo.counter', { shift: null, n: 0 }); LS.set('ordo.resetAt', r.reset_at);
+  }
   S.lastSync = new Date().toISOString();
   LS.set('ordo.lastSync', S.lastSync);
   persist();

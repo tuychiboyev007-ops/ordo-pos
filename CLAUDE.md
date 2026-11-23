@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 283 ta)
+npm test         # API sinovlari (PGlite, 307 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -154,6 +154,15 @@ Muhim qoidalar:
   qoldiq aralashmaydi). Ikki hujjat yoziladi (pul harakatisiz, bekor qilsa bo'ladi). Elementlar sahifasida manfiy qoldiq yoki
   narxsiz element bo'lsa qizil ogohlantirish va «Hammasini to'g'rilash» tugmasi chiqadi; Diagnostika ham shu yerga yo'naltiradi.
   Egasi "to'g'irla" dedi — haqiqiy son va narxni faqat u biladi, jonli bazaga Claude yozmaydi (o'qishga ham ruxsat berilmagan).
+- **Ma'lumotni tozalash** (egasi: "hisobotni nolga tushir, menyu emas"): Sozlamalar → «Ma'lumotni tozalash» →
+  «Hisobotlarni nolga tushirish» (`resetForm`). `GET /api/admin/reset` (sonlar), `POST /api/admin/reset {scope, confirm}` —
+  **faqat egasi** (menejer 403), `confirm` aynan `TOZALASH`. `hammasi` (standart): buyurtma, to'lov, smena, kassa harakati,
+  rasxod, nasiya, ombor hujjatlari va harakati o'chadi, qoldiqlar va qarzlar 0. `savdo`: faqat savdo va pul — kirim hujjatlari
+  qoladi, sotuv yechgan elementlar omborga qaytadi. **Hech qachon o'chmaydi:** menyu, texkarta, elementlar ro'yxati va narxi,
+  zagotovka tarkibi, xodimlar, zal/stollar, sozlamalar, qurilmalar. `settings.reset_at` yoziladi; `/api/state` uni qaytaradi va
+  kassa (`store.js` `pull`) o'zgarganini ko'rsa mahalliy tarixni (`ordo.recent`, `ordo.failed`, chek hisoblagichi) tashlaydi.
+  Yangi jadval qo'shsangiz `SALES_TABLES` / `STOCK_TABLES` (admin.js) ro'yxatiga kiriting — aks holda tozalashdan keyin qoladi.
+  Jonli Mazza'da tugmani **egasi o'zi** bosadi — Claude jonli ma'lumotni o'chirmaydi.
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

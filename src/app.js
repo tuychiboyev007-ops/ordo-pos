@@ -45,6 +45,8 @@ const ROUTES = {
   'POST /api/admin/staff': ['manager', M.saveStaff],
   'GET /api/admin/settings': ['manager', M.settings],
   'POST /api/admin/settings': ['manager', M.saveSettings],
+  'GET /api/admin/reset': ['manager', M.resetInfo],
+  'POST /api/admin/reset': ['manager', M.resetData],
   'GET /api/admin/devices': ['manager', M.devices],
   'GET /api/admin/bot': ['manager', B.status],
   'POST /api/admin/bot': ['manager', B.save],

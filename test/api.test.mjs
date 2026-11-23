@@ -939,6 +939,67 @@ let threw = false;
 try { await db.all('SELECT * FROM orders'); } catch (e) { threw = e.code === 'NO_TENANT_SCOPE'; }
 ok(threw, 'company_id siz so\'rov bajarilmaydi');
 
+// ---------- Ma'lumotni tozalash ----------
+group('Ma\'lumotni tozalash: hisobotlar nolga tushadi, menyu qoladi');
+{
+  // Asosiy sinov restoranida: sotuv, rasxod, kirim bor. Avval "faqat savdo", keyin "hammasi".
+  const before = await call('GET', '/api/admin/reset', null, SES);
+  ok(before.ok && before.owner === true && before.word === 'TOZALASH' && before.counts.orders > 0 && before.counts.products > 0, 'tozalashdan oldin: nechta yozuv borligi', before.counts);
+  const menu0 = (await call('GET', '/api/admin/menu', null, SES)).products.length;
+  const ing0 = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients;
+  const recipe0 = (await call('GET', '/api/stock/recipe?product_id=' + burger, null, SES)).lines.length;
+  const beef0 = ing0.find((x) => x.id === beef);
+  const sold = (await call('GET', `/api/stock/moves?ingredient_id=${beef}&from=${today()}&to=${today()}`, null, SES)).moves.filter((mv) => mv.order_id).reduce((a, mv) => a + mv.qty, 0);
+  ok(sold < 0, 'go\'sht sotuvda ombordan chiqqan', sold);
+
+  const MGRSES = (await call('POST', '/api/pin', { user_id: MGR, pin: '3333' }, DEV)).token;
+  const other0 = await call('GET', '/api/boot', null, DEV2);
+  let r = await call('POST', '/api/admin/reset', { scope: 'savdo', confirm: 'tozalash' }, MGRSES);
+  ok(r.status === 403, 'menejer tozalay olmaydi — faqat egasi', r.status);
+  r = await call('POST', '/api/admin/reset', { scope: 'savdo', confirm: 'ha' }, SES);
+  ok(r.status === 400 && r.error === 'confirm', 'tasdiqlash so\'zisiz o\'chmaydi', r);
+  r = await call('POST', '/api/admin/reset', { scope: 'boshqa', confirm: 'TOZALASH' }, SES);
+  ok(r.status === 400 && r.error === 'bad_scope', 'noma\'lum bo\'lim rad etiladi', r);
+  ok((await call('GET', '/api/admin/reset', null, SES)).counts.orders === before.counts.orders, 'rad etilganda hech narsa o\'chmagan');
+
+  r = await call('POST', '/api/admin/reset', { scope: 'savdo', confirm: ' tozalash ' }, SES);
+  ok(r.ok && r.scope === 'savdo' && r.deleted.orders === before.counts.orders, '"faqat savdo" tozalandi', r.deleted);
+  let a = await call('GET', '/api/admin/reset', null, SES);
+  ok(a.counts.orders === 0 && a.counts.shifts === 0 && a.counts.expenses === 0 && a.counts.debts === 0 && a.sales === 0, 'buyurtma, smena, rasxod, nasiya — 0', a.counts);
+  ok(a.counts.stock_docs === before.counts.stock_docs && a.counts.products === before.counts.products, 'ombor hujjatlari va menyu joyida');
+  const beef1 = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === beef);
+  ok(Math.abs(beef1.stock - (beef0.stock - sold)) < 1e-6 && beef1.cost === beef0.cost, 'sotuvda chiqqan go\'sht omborga qaytdi, narxi o\'zgarmadi', [beef0.stock, sold, beef1.stock]);
+  let rep = await call('GET', `/api/reports/summary?from=${today()}&to=${today()}`, null, SES);
+  ok(rep.totals.orders === 0 && rep.totals.total === 0 && rep.items.length === 0, 'savdo hisoboti bo\'sh');
+  rep = await call('GET', `/api/reports/profit?from=${today()}&to=${today()}`, null, SES);
+  ok(rep.totals.revenue === 0 && rep.totals.expenses === 0 && rep.totals.net + rep.totals.waste === 0, 'foyda hisoboti: tushum va rasxod 0', rep.totals);
+  const st = await call('GET', '/api/state', null, DEV);
+  ok(st.reset_at && st.shift === null && st.orders.length === 0, 'kassaga: smena yo\'q, ochiq buyurtma yo\'q, tozalash belgisi bor', [st.reset_at, st.shift]);
+
+  r = await call('POST', '/api/admin/reset', { scope: 'hammasi', confirm: 'TOZALASH' }, SES);
+  ok(r.ok && r.deleted.stock_docs === before.counts.stock_docs, '"hammasi" tozalandi', r.deleted);
+  a = await call('GET', '/api/admin/reset', null, SES);
+  ok(a.counts.stock_docs === 0 && a.counts.stock_moves === 0, 'ombor hujjatlari va harakatlari — 0', a.counts);
+  const ing1 = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients;
+  ok(ing1.length === ing0.length && ing1.every((x) => x.stock === 0) && ing1.find((x) => x.id === beef).cost === beef0.cost, 'elementlar ro\'yxati va narxi joyida, qoldiq 0');
+  ok((await call('GET', '/api/admin/menu', null, SES)).products.length === menu0 && (await call('GET', '/api/stock/recipe?product_id=' + burger, null, SES)).lines.length === recipe0, 'menyu va texkarta o\'zgarmadi');
+  ok((await call('GET', '/api/suppliers', null, SES)).suppliers.every((x) => x.debt === 0), 'yetkazib beruvchilar qarzi 0');
+  rep = await call('GET', `/api/reports/material?from=${today()}&to=${today()}`, null, SES);
+  ok(rep.totals.close_v === 0 && rep.totals.in_v === 0 && rep.money.revenue === 0, 'moddiy hisobot bo\'sh', rep.totals);
+  const dg = await call('GET', '/api/reports/diagnostics', null, SES);
+  ok(dg.ok && dg.checks.some((x) => x.key === 'no_sales'), 'diagnostika yiqilmaydi: "savdo yo\'q"');
+  const an = await call('GET', `/api/reports/analytics?from=${today()}&to=${today()}`, null, SES);
+  ok(an.ok && an.cur.revenue === 0 && an.items.length === 0 && an.forecast.so_far === 0, 'analitika bo\'sh holatda ham ishlaydi');
+  const other1 = await call('GET', '/api/boot', null, DEV2);
+  ok(other1.staff.length === other0.staff.length && other1.ok, 'boshqa restoranga tegilmadi');
+  // Tozalashdan keyin kassa yana ishlaydi: smena ochiladi, sotiladi
+  const SHR = id('s'); const OR = id('o');
+  r = await sync([op('shift.open', { shift_id: SHR, cash: 0 }), op('open', { type: 'olib', number: 1, shift_id: SHR }, OR), op('add', { item: { id: id('i'), product_id: cola, name: 'Cola', price: 10000, qty: 1, unit: 'dona', station_id: null } }, OR),
+    op('send', {}, OR), op('pay', { payment: { id: id('y'), method: 'naqd', amount: 10000 } }, OR), op('close', { shift_id: SHR }, OR), op('shift.close', { shift_id: SHR, counted: 10000 })]);
+  ok(r.results.every((x) => x.ok), 'tozalashdan keyin kassa yana ishlaydi', r.results.filter((x) => !x.ok));
+  ok((await call('GET', '/api/admin/reset', null, SES)).sales === 10000, 'yangi savdo hisobga tushdi');
+}
+
 console.log(`\n${pass} ok, ${failN} xato`);
 await endDb();
 process.exit(failN ? 1 : 0);

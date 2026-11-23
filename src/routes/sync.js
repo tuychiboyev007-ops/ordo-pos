@@ -285,7 +285,9 @@ export async function state(req, env, db, auth) {
   const last = shift ? await db.first('SELECT COALESCE(MAX(number), 0)::int AS n FROM orders WHERE company_id = ? AND shift_id = ?', company, shift.id) : null;
   if (shift) shift.last_number = last.n;
   await db.run('UPDATE devices SET last_seen = now() WHERE company_id = ? AND id = ?', company, auth.d || 0);
-  return json({ ok: true, orders, stop, shift, notes, now: new Date().toISOString() });
+  // Egasi ma'lumotni tozalagan bo'lsa (Sozlamalar) — qurilma o'z keshidagi eski buyurtmalar tarixini tashlaydi.
+  const rs = await db.first("SELECT value FROM settings WHERE company_id = ? AND key = 'reset_at'", company);
+  return json({ ok: true, orders, stop, shift, notes, reset_at: rs?.value || null, now: new Date().toISOString() });
 }
 
 /**

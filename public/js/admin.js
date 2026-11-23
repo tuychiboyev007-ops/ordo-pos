@@ -1857,6 +1857,43 @@ PAGES.halls = async (m) => {
   $$('[data-t]', m).forEach((b) => b.onclick = () => tableForm(d.tables.find((t) => t.id === Number(b.dataset.t))));
 };
 
+/** Ma'lumotni tozalash: nima o'chishi va nima qolishi ko'rsatiladi; tasdiqlash so'zi yozilmaguncha tugma ishlamaydi. Faqat egasi. */
+async function resetForm() {
+  const d = await S('/api/admin/reset');
+  if (!d.owner) { toast('Ma\'lumotni faqat restoran egasi tozalay oladi', 'bad'); return; }
+  const c = d.counts; let scope = 'hammasi';
+  const res = await openModal({
+    title: 'Hisobotlarni nolga tushirish', size: 'wide',
+    body: `<div class="tcards two" data-sc>
+        <button type="button" data-s="hammasi" class="on">${icon('trash')}<span><b>Hammasi — savdo va ombor</b><small>Buyurtmalar, to'lovlar, smenalar, rasxod, nasiya va ombor harakati o'chadi; qoldiqlar 0 bo'ladi. Toza boshlash uchun.</small></span></button>
+        <button type="button" data-s="savdo">${icon('receipt')}<span><b>Faqat savdo va pul</b><small>Buyurtmalar, to'lovlar, smenalar, rasxod, nasiya o'chadi. Kirim hujjatlari qoladi, sotilgan elementlar omborga qaytadi.</small></span></button></div>
+      <div class="cols2 even" style="margin-top:14px"><div><div class="sec-t">O'chadi</div><div class="ubox full" data-del></div></div>
+        <div><div class="sec-t">Qoladi</div><div class="ubox full">
+          <div class="urow"><span>Menyu — taomlar va texkartalar</span><b>${c.products} ta</b></div><div class="urow"><span>Elementlar ro'yxati va narxi</span><b>${c.ingredients} ta</b></div>
+          <div class="urow"><span>Xodimlar va PIN-kodlar</span><b>${c.staff} ta</b></div><div class="urow"><span>Zal, stollar, sozlamalar</span><b>qoladi</b></div></div></div></div>
+      ${c.open_orders ? `<div class="note" style="margin-top:12px">${icon('alert')}<span>Hozir <b>${c.open_orders} ta ochiq buyurtma</b> bor — ular ham o'chadi.</span></div>` : ''}
+      <div class="field" style="margin-top:14px"><label>Qaytarib bo'lmaydi. Tasdiqlash uchun <b>${esc(d.word)}</b> deb yozing</label><input class="input" data-w autocomplete="off" placeholder="${esc(d.word)}" style="max-width:260px;text-transform:uppercase"></div>`,
+    foot: `<button class="btn" data-x>Bekor</button><button class="btn danger solid" data-ok disabled>${icon('trash')}Nolga tushirish</button>`,
+    onOpen: (mm, close) => {
+      const row = (l, v) => `<div class="urow"><span>${l}</span><b>${v}</b></div>`;
+      const draw = () => {
+        $$('[data-s]', mm).forEach((b) => b.classList.toggle('on', b.dataset.s === scope));
+        mm.querySelector('[data-del]').innerHTML = row('Buyurtmalar (cheklar)', `${c.orders} ta · ${sum(d.sales)} so'm`) + row('Smenalar va kassa harakati', `${c.shifts} ta`) + row('Rasxodlar', `${c.expenses} ta`) + row('Mijozlar nasiyasi', c.debts ? `${c.debts} ta mijoz` : 'yo\'q')
+          + (scope === 'hammasi' ? row('Ombor hujjatlari (kirim, utilizatsiya…)', `${c.stock_docs} ta`) + row('Ombor qoldiqlari', '0 ga tushadi') + row('Yetkazib beruvchilarga qarz', '0 ga tushadi') : row('Sotuvda chiqqan elementlar', 'omborga qaytadi'));
+        mm.querySelector('[data-ok]').disabled = mm.querySelector('[data-w]').value.trim().toUpperCase() !== d.word;
+      };
+      $$('[data-s]', mm).forEach((b) => b.onclick = () => { scope = b.dataset.s; draw(); });
+      mm.querySelector('[data-w]').addEventListener('input', draw); draw();
+      mm.querySelector('[data-ok]').onclick = async () => {
+        const btn = mm.querySelector('[data-ok]'); btn.disabled = true;
+        try { await P('/api/admin/reset', { scope, confirm: mm.querySelector('[data-w]').value }); toast('Hisobotlar nolga tushirildi — menyu joyida', 'ok'); close(true); }
+        catch (e) { btn.disabled = false; fail(e); }
+      };
+    },
+  });
+  if (res) show('dash');
+}
+
 PAGES.settings = async (m) => {
   const d = await S('/api/admin/settings');
   const dv = await S('/api/admin/devices');
@@ -1882,7 +1919,10 @@ PAGES.settings = async (m) => {
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" id="botSave">${bt.url ? 'Saqlash' : 'Ulash'}</button>${bt.url ? '<button class="btn" id="botCheck">Tekshirish</button><button class="btn danger" id="botOff">Uzish</button>' : ''}</div>
       ${bt.url ? `<div class="hint mt">Oxirgi aloqa: ${bt.ok_at ? dateTime(bt.ok_at) : '—'} · so'nggi 24 soatda botdan ${bt.orders_24h} ta buyurtma${bt.pending ? ` · botga yuborilishi kutilayotgan holatlar: ${bt.pending}` : ''}</div>` : ''}
       ${bt.error ? `<div class="hint mt" style="color:var(--bad)">${esc(bt.error)}</div>` : ''}
-      <div class="hint mt">Kassa ochiq turganda botni har 8 soniyada tekshiradi. Kassa yopiq bo'lsa buyurtma botda qoladi va kassa ochilganda tushadi.</div></div></div>`;
+      <div class="hint mt">Kassa ochiq turganda botni har 8 soniyada tekshiradi. Kassa yopiq bo'lsa buyurtma botda qoladi va kassa ochilganda tushadi.</div></div></div>
+    <div class="card mt danger-zone"><div class="card-h"><h3>Ma'lumotni tozalash</h3><span class="hint">sinov savdolaridan keyin hisobotlarni nolga tushirish</span></div>
+      <div class="card-b"><p style="font-size:14px;line-height:1.55;margin-bottom:12px">Sinab ko'rish uchun urilgan buyurtmalar hisobotlarda turibdimi? Shu yerdan nolga tushiring. <b>Menyu, texnologik kartalar, elementlar ro'yxati, xodimlar, zal va stollar o'chmaydi.</b></p>
+      <button class="btn danger" id="resetBtn">${icon('trash')}Hisobotlarni nolga tushirish</button></div></div>`;
   m.insertAdjacentHTML('beforeend', `<div class="card mt"><div class="card-h"><h3>Kirish paroli (email bilan kirish)</h3></div><div class="card-b">
     <div class="grid3"><div class="field"><label>Hozirgi parol</label><input class="input" type="password" id="pw0" autocomplete="current-password"></div>
     <div class="field"><label>Yangi parol (kamida 8 belgi)</label><input class="input" type="password" id="pw1" autocomplete="new-password"></div>
@@ -1892,6 +1932,7 @@ PAGES.settings = async (m) => {
     if ($('#pw1').value !== $('#pw2').value) { toast('Yangi parollar bir xil emas', 'bad'); return; }
     try { await P('/api/password', { old: $('#pw0').value, password: $('#pw1').value }); toast('Parol almashtirildi', 'ok'); setSession(null); login(); } catch (e) { fail(e); }
   };
+  $('#resetBtn').onclick = () => resetForm();
   $('#save').onclick = async () => { const b = {}; $$('[data-k]', m).forEach((i) => { b[i.dataset.k] = i.value; }); try { await P('/api/admin/settings', b); toast('Saqlandi — kassada "Menyuni yangilash" bosing', 'ok'); } catch (e) { fail(e); } };
   $('#botSave').onclick = async () => {
     const btn = $('#botSave'); btn.disabled = true;

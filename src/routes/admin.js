@@ -299,3 +299,62 @@ export async function removeModGroup(req, env, db, auth) {
   await db.run('DELETE FROM product_mods WHERE company_id = ? AND group_id = ?', auth.c, int(b.id));
   return json({ ok: true });
 }
+
+/**
+ * Ma'lumotni tozalash — sinov (demo) savdolaridan keyin hisobotlarni nolga tushirish. Faqat EGASI, tasdiqlash so'zi bilan.
+ *   savdo   — buyurtmalar, to'lovlar, smenalar, kassa harakati, rasxod, nasiya; sotuv tufayli ombordan chiqqan
+ *             elementlar omborga QAYTADI (kirim va inventarizatsiya hujjatlari joyida qoladi);
+ *   hammasi — yuqoridagilar + ombor hujjatlari va harakatlari, qoldiq 0, yetkazib beruvchilar qarzi 0.
+ * HECH QACHON o'chmaydi: menyu (taom, toifa, texkarta, qo'shimchalar), elementlar ro'yxati va narxi, zagotovkalar,
+ * xodimlar, zal va stollar, sozlamalar, qurilmalar. Kassalar keshini tozalashi uchun `reset_at` belgisi qo'yiladi.
+ */
+const RESET_WORD = 'TOZALASH';
+const SALES_TABLES = ['payments', 'order_items', 'ops', 'orders', 'cash_moves', 'shifts', 'expenses', 'debt_moves', 'notes', 'bot_events'];
+const STOCK_TABLES = ['stock_moves', 'supplier_moves', 'stock_docs'];
+
+export async function resetInfo(req, env, db, auth) {
+  const c = auth.c;
+  const one = async (sql) => (await db.first(sql, c)).n;
+  const counts = {
+    orders: await one('SELECT COUNT(*)::int AS n FROM orders WHERE company_id = ?'),
+    open_orders: await one("SELECT COUNT(*)::int AS n FROM orders WHERE company_id = ? AND status = 'open'"),
+    shifts: await one('SELECT COUNT(*)::int AS n FROM shifts WHERE company_id = ?'),
+    expenses: await one('SELECT COUNT(*)::int AS n FROM expenses WHERE company_id = ? AND deleted_at IS NULL'),
+    debts: await one('SELECT COUNT(*)::int AS n FROM customers WHERE company_id = ? AND debt <> 0'),
+    stock_docs: await one('SELECT COUNT(*)::int AS n FROM stock_docs WHERE company_id = ?'),
+    stock_moves: await one('SELECT COUNT(*)::int AS n FROM stock_moves WHERE company_id = ?'),
+    products: await one('SELECT COUNT(*)::int AS n FROM products WHERE company_id = ? AND active = true'),
+    ingredients: await one('SELECT COUNT(*)::int AS n FROM ingredients WHERE company_id = ? AND active = true'),
+    staff: await one('SELECT COUNT(*)::int AS n FROM users WHERE company_id = ? AND active = true'),
+  };
+  const sales = await db.first("SELECT COALESCE(SUM(total), 0)::float8 AS v FROM orders WHERE company_id = ? AND status = 'closed'", c);
+  return json({ ok: true, word: RESET_WORD, owner: auth.r === 'owner', counts, sales: Math.round(Number(sales.v) || 0) });
+}
+
+export async function resetData(req, env, db, auth) {
+  if (auth.r !== 'owner') return fail(403, 'forbidden', 'Ma\'lumotni faqat restoran egasi tozalay oladi');
+  const b = await body(req); const c = auth.c;
+  const scope = ['savdo', 'hammasi'].includes(b.scope) ? b.scope : null;
+  if (!scope) return fail(400, 'bad_scope', 'Nimani tozalashni tanlang');
+  if (String(b.confirm || '').trim().toUpperCase() !== RESET_WORD) return fail(400, 'confirm', `Tasdiqlash uchun ${RESET_WORD} deb yozing`);
+  const at = new Date().toISOString();
+  const deleted = await db.tx(async (tx) => {
+    const out = {};
+    if (scope === 'savdo') {
+      // Sotuvda ombordan chiqqan elementlar qaytariladi — aks holda savdo o'chib, ombor kamayganicha qolardi.
+      await tx.run(`UPDATE ingredients SET stock = ingredients.stock - s.q FROM (SELECT ingredient_id, SUM(qty) AS q FROM stock_moves
+        WHERE company_id = ? AND order_id IS NOT NULL GROUP BY ingredient_id) s WHERE ingredients.company_id = ? AND ingredients.id = s.ingredient_id`, c, c);
+      out.sale_moves = (await tx.all('DELETE FROM stock_moves WHERE company_id = ? AND order_id IS NOT NULL RETURNING id', c)).length;
+    }
+    for (const t of SALES_TABLES) out[t] = (await tx.all(`DELETE FROM ${t} WHERE company_id = ? RETURNING 1 AS x`, c)).length;
+    await tx.run('UPDATE customers SET debt = 0 WHERE company_id = ?', c);
+    if (scope === 'hammasi') {
+      for (const t of STOCK_TABLES) out[t] = (await tx.all(`DELETE FROM ${t} WHERE company_id = ? RETURNING 1 AS x`, c)).length;
+      await tx.run('UPDATE ingredients SET stock = 0 WHERE company_id = ?', c);
+      await tx.run('UPDATE suppliers SET debt = 0 WHERE company_id = ?', c);
+    }
+    await tx.run(`INSERT INTO settings (company_id, key, value) VALUES (?, 'reset_at', ?) ON CONFLICT (company_id, key) DO UPDATE SET value = EXCLUDED.value`, c, at);
+    return out;
+  });
+  return json({ ok: true, scope, at, deleted });
+}
