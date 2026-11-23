@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 146 ta)
+npm test         # API sinovlari (PGlite, 155 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -66,6 +66,25 @@ Muhim qoidalar:
 - Pul — so'm, butun son. Tannarx sotuv paytida suratga olinadi (`order_items.cost`).
 - Telefonda http (LAN) bo'lsa crypto yo'q — PIN serverda tekshiriladi (`POST /api/pin`).
 - UI'da emoji ishlatilmaydi — chiziqli SVG ikonkalar (`public/js/ui.js`).
+
+## Kassa va boshqaruv — keyingi o'zgarishlar (2026-11-24)
+
+- **Taom rasmlari kassada:** rasmi bor restoranda kartochka balandroq (`.pgrid.pics`, rasm tepada, nom va narx toifa
+  rangidagi tasmada); rasmsiz restoranda eski ixcham rangli tugmalar. Rasm yuklanmasa kartochka rangli ko'rinishga
+  qaytadi (`error` — capture bosqichida). Ofitsiant ro'yxatida kichik rasm. `/img/*` 7 kun keshda (`vercel.json`).
+  «Tez kassa»ga o'tishda rasm tushib qolgan edi — egasi "rasmlar qani" dedi; olib tashlamang.
+- **Moddiy hisobotda pul xulosasi** (`money`): savdo, sof foyda, utilizatsiya, xodimlar olgani, kassada bor.
+  Hisob `reports.js` `periodMoney()` dan — Foyda hisoboti ham shundan (ikki ekranda raqam bir xil bo'lishi shart).
+  «Xodimlar oldi» = rasxod turi `ish haqi | avans | oylik | maosh` (so'z bo'yicha). «Kassada bor» — ochiq smenaning
+  hozirgi naqd puli (`shiftSummary().expected_cash`), davrga bog'liq emas; smena yopiq — `null`.
+- **Texkarta, yangi masalliq:** ro'yxatda yo'q nom yozilsa qator OSTIDA `gramm (kg) / ml (litr) / dona` tanlovi chiqadi
+  (`.newing`; ilgari faqat ochiladigan ro'yxat ichida edi va egasi topolmadi). Hech biri oldindan belgilanmaydi.
+  Miqdor `recQty()` bilan o'qiladi: "10", "10 gr", "0,03 kg", "1 dona". Nomi ro'yxatdagi bilan aynan bir xil
+  yozilsa o'zi tanlanadi. Masalliq NARXI alohida yozilmaydi — Ombor → Kirim qilinganda qo'yiladi.
+- **Logo:** boshqaruvda bosilsa Bosh sahifa (`#home`), kassada — Zal (`.rail .mk[data-nav=zal]`; kassa hodisalari
+  `button,[data-nav],…` bo'yicha — yangi bosiladigan element `button` bo'lmasa shu ro'yxatga kirsin).
+- Tushuntiruvchi video (UFO burger → ombordan ayrilishi) skriptlari:
+  `~/Downloads/savdopro-main-2/_preview/promo-src/ordo/ufo-ombor/` (README bilan).
 
 ## Kelishilgan qarorlar
 
