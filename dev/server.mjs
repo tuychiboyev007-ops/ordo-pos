@@ -33,7 +33,7 @@ if (!has.n) {
 }
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+  '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 const PAGES = { '/': 'index.html', '/kassa': 'kassa.html', '/boshqaruv': 'admin.html', '/ofitsiant': 'ofitsiant.html', '/oshxona': 'oshxona.html' };
 
 const server = http.createServer(async (req, res) => {

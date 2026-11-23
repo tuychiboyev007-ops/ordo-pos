@@ -174,12 +174,14 @@ function renderSheet() {
     sh.innerHTML = `<div class="sh-top"><label class="srch">${icon('search')}<input id="ws" placeholder="Taom qidirish" autocomplete="off"></label><button class="btn" data-close>Tayyor</button></div>
       <div class="sh-cats" id="wcats"></div><div class="sh-list" id="wlist"></div>`;
     $('#ws').addEventListener('input', (e) => { ui.search = e.target.value; renderSheet(); });
+    // Rasm yuklanmasa (internet yo'q) qator rasmsiz ko'rinishga qaytadi — `error` yuqoriga ko'tarilmaydi, capture kerak.
+    $('#wlist').addEventListener('error', (e) => { if (e.target.tagName === 'IMG') { e.target.closest('.pr')?.classList.remove('pic'); e.target.remove(); } }, true);
   }
   $('#wcats').innerHTML = ui.search ? '' : list.map((c) => `<button data-cat="${c.id}" class="${c.id === ui.cat ? 'on' : ''}" style="--c:${esc(c.color || '#475569')}">${esc(c.name)}</button>`).join('');
   const q = ui.search.trim().toLowerCase();
   const ps = q ? products().filter((p) => p.name.toLowerCase().includes(q)) : products().filter((p) => p.category_id === ui.cat);
   const cnt = new Map(); for (const i of o?.items || []) if (i.status !== 'cancelled') cnt.set(i.product_id, (cnt.get(i.product_id) || 0) + (i.unit === 'kg' ? 1 : i.qty));
-  $('#wlist').innerHTML = ps.map((p) => `<button class="pr ${S.stop.has(p.id) || p.stop ? 'stop' : ''}" data-p="${p.id}"><span class="nm">${esc(p.name)}${modsFor(S.boot, p.id).length ? '<small>qo\'shimcha bor</small>' : ''}</span>
+  $('#wlist').innerHTML = ps.map((p) => `<button class="pr ${p.image ? 'pic' : ''} ${S.stop.has(p.id) || p.stop ? 'stop' : ''}" data-p="${p.id}">${p.image ? `<img class="th" src="${esc(p.image)}" alt="" loading="lazy" decoding="async" draggable="false">` : ''}<span class="nm">${esc(p.name)}${modsFor(S.boot, p.id).length ? '<small>qo\'shimcha bor</small>' : ''}</span>
       <span class="pc">${sum(p.price)}${p.unit === 'kg' ? '/kg' : ''}</span>${cnt.get(p.id) ? `<i>${qty(cnt.get(p.id))}</i>` : ''}<span class="pl">${icon('plus')}</span></button>`).join('')
     || '<div class="hint" style="padding:20px">Topilmadi</div>';
   sh.querySelector('[data-close]').textContent = added ? `Tayyor · ${added} ta yangi` : 'Yopish';

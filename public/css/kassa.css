@@ -127,6 +127,14 @@ body{user-select:none}
 .ptile.stop{background:#a3a9b4}
 .ptile.stop::after{content:"TUGADI";position:absolute;top:10px;right:10px;font-size:11px;font-weight:700;color:#fff;background:var(--bad);padding:2px 6px;border-radius:4px;letter-spacing:.03em}
 .ptile.flash{animation:flash .35s}
+/* Rasmli kartochka: rasm tepada, nom va narx toifa rangidagi tasmada. Faqat rasmi bor restoranda (.pgrid.pics). */
+.pgrid.pics{grid-auto-rows:178px}
+.ptile.pic{padding:0;overflow:hidden;justify-content:flex-start}
+.ptile.pic .ph{flex:1 1 0;min-height:0;display:block;background:#fff}
+.ptile.pic .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ptile.pic .n{flex:none;padding:8px 12px 0;font-size:15.5px;-webkit-line-clamp:2}
+.ptile.pic .p{flex:none;padding:3px 12px 9px;font-size:15.5px}
+.ptile.pic.stop .ph img{filter:grayscale(1);opacity:.5}
 @keyframes flash{50%{box-shadow:0 0 0 4px var(--ink)}}
 
 .ticket{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
@@ -234,6 +242,7 @@ body{user-select:none}
 
 @media (max-width:1180px){.pos{grid-template-columns:350px minmax(0,1fr)}.pgrid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}.rail{width:72px}.rail button{width:62px;font-size:10.5px}}
 @media (max-height:720px){.tk-pad button{height:38px}.tk-act .btn{height:50px}}
+@media (max-height:720px){.pgrid.pics{grid-auto-rows:158px}}
 
 /* ---- Olib ketish / yetkazish: telefon va manzil ---- */
 .contact{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}

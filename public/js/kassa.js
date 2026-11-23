@@ -186,6 +186,12 @@ function viewOrder(v) {
       <div class="ctabs" id="ctabs">${list.map((c) => `<button data-cat="${c.id}" class="${ui.cat === c.id ? 'on' : ''}" style="--c:${esc(c.color || '#475569')}">${esc(c.name)}</button>`).join('')}
         <label class="csearch">${icon('search')}<input id="psearch" placeholder="Qidirish yoki shtrix-kod" autocomplete="off" value="${esc(ui.search)}"></label></div>
       <div class="pgrid" id="pgrid"></div></section></div>`;
+  // Rasm yuklanmasa (internet yo'q, fayl o'chgan) kartochka buzuq rasm bilan qolmaydi — oddiy rangli ko'rinishga qaytadi.
+  // `error` hodisasi yuqoriga ko'tarilmaydi, shuning uchun ushlash (capture) bosqichida tinglanadi.
+  $('#pgrid').addEventListener('error', (e) => {
+    if (e.target.tagName !== 'IMG') return;
+    const t = e.target.closest('.ptile'); e.target.closest('.ph')?.remove(); t?.classList.remove('pic');
+  }, true);
   $('#psearch').addEventListener('input', (e) => { ui.search = e.target.value; renderProducts(); });
   $('#psearch').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
@@ -206,8 +212,11 @@ function renderProducts() {
   const grid = $('#pgrid'); if (!grid) return;
   const color = Object.fromEntries(cats().map((c) => [c.id, c.color]));
   const list = filteredProducts();
-  grid.innerHTML = list.map((p) => `<button class="ptile ${S.stop.has(p.id) || p.stop ? 'stop' : ''}" data-p="${p.id}" style="--c:${esc(color[p.category_id] || '#475569')}">
-      <span class="n">${esc(p.name)}</span><span class="p">${sum(p.price)}${p.unit === 'kg' ? '<small>/ kg</small>' : ''}</span></button>`).join('')
+  // Restoranda birorta taomning rasmi bo'lsa kartochkalar balandroq (rasm tepada, nom va narx rangli tasmada).
+  // Rasmi yo'q restoranda ko'rinish o'zgarmaydi — ixcham rangli tugmalar.
+  grid.classList.toggle('pics', products().some((p) => p.image));
+  grid.innerHTML = list.map((p) => `<button class="ptile ${p.image ? 'pic' : ''} ${S.stop.has(p.id) || p.stop ? 'stop' : ''}" data-p="${p.id}" style="--c:${esc(color[p.category_id] || '#475569')}">
+      ${p.image ? `<span class="ph"><img src="${esc(p.image)}" alt="" loading="lazy" decoding="async" draggable="false"></span>` : ''}<span class="n">${esc(p.name)}</span><span class="p">${sum(p.price)}${p.unit === 'kg' ? '<small>/ kg</small>' : ''}</span></button>`).join('')
     || `<div class="empty" style="grid-column:1/-1">${icon('search')}<div>Hech narsa topilmadi</div></div>`;
   renderCounts();
 }

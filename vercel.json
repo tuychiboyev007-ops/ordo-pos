@@ -12,6 +12,7 @@
   "headers": [
     { "source": "/(.*)\\.(html|js|css|webmanifest)", "headers": [{ "key": "cache-control", "value": "no-cache" }] },
     { "source": "/(kassa|boshqaruv|ofitsiant|oshxona)", "headers": [{ "key": "cache-control", "value": "no-cache" }] },
-    { "source": "/", "headers": [{ "key": "cache-control", "value": "no-cache" }] }
+    { "source": "/", "headers": [{ "key": "cache-control", "value": "no-cache" }] },
+    { "source": "/img/(.*)", "headers": [{ "key": "cache-control", "value": "public, max-age=604800, stale-while-revalidate=2592000" }] }
   ]
 }
