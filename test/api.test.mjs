@@ -596,6 +596,37 @@ group('Savdo analitikasi (xodim, tur, to\'lov, bashorat) va diagnostika');
   ok(r.status === 401 || r.status === 403, 'faqat rahbar', r.status);
 }
 
+// ---------- Boshlang'ich qoldiq ----------
+group('Boshlang\'ich qoldiq: bir oynada qoldiq va narxni to\'g\'rilash');
+{
+  const ingOf = async (iid) => (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === iid);
+  const a1 = await mk('Bosh A', 'kg'); const a2 = await mk('Bosh B', 'dona'); const a3 = await mk('Bosh C', 'kg'); const a4 = await mk('Bosh D', 'dona');
+  // A: manfiy qoldiq (kirimsiz chiqim), narxi yo'q; B: eski noto'g'ri narxda qoldiq bor
+  await call('POST', '/api/stock/doc', { kind: 'utilizatsiya', reason: 'sinov', lines: [{ ingredient_id: a1, qty: 0.2 }] }, SES);
+  await call('POST', '/api/stock/doc', { kind: 'kirim', lines: [{ ingredient_id: a2, qty: 10, price: 999 }, { ingredient_id: a3, qty: 4, price: 20000 }] }, SES);
+  ok((await ingOf(a1)).stock === -0.2 && (await ingOf(a1)).cost === 0, 'boshida: A manfiy va narxsiz');
+  let r = await call('POST', '/api/stock/opening', { lines: [] }, SES);
+  ok(r.status === 400 && r.error === 'empty', 'bo\'sh ro\'yxat rad etiladi', r);
+  r = await call('POST', '/api/stock/opening', { lines: [{ ingredient_id: a1, qty: -1 }] }, SES);
+  ok(r.status === 400 && r.error === 'bad_qty', 'manfiy miqdor rad etiladi', r);
+  r = await call('POST', '/api/stock/opening', { lines: [{ ingredient_id: a1, qty: 5, price: 0 }] }, SES);
+  ok(r.status === 400 && r.error === 'bad_price', 'nol narx rad etiladi', r);
+  r = await call('POST', '/api/stock/opening', { lines: [{ ingredient_id: a1, qty: 5, price: 80000 }, { ingredient_id: a2, qty: 30, price: 1500 }, { ingredient_id: a3, qty: 6 }, { ingredient_id: a4, price: 700 }, { ingredient_id: bun }] }, SES);
+  ok(r.ok && r.changed === 4 && r.total === 5 * 80000 + 30 * 1500 && r.in_doc && r.inv_doc, 'saqlandi: 4 ta element (bo\'sh satr o\'tkazib yuborildi)', r);
+  let x = await ingOf(a1); ok(x.stock === 5 && x.cost === 80000, 'A: manfiydan 5 kg ga, narxi aynan 80 000', x);
+  x = await ingOf(a2); ok(x.stock === 30 && x.cost === 1500, 'B: 30 dona, eski noto\'g\'ri narx aralashmadi (1 500)', x);
+  x = await ingOf(a3); ok(x.stock === 6 && x.cost === 20000, 'C: faqat miqdor — narx o\'zgarmadi', x);
+  x = await ingOf(a4); ok(x.stock === 0 && x.cost === 700, 'D: faqat narx — qoldiq 0, narxi yozildi', x);
+  const d = await call('GET', '/api/stock/doc?id=' + r.in_doc, null, SES);
+  ok(d.doc.kind === 'kirim' && d.doc.total === r.total && d.doc.paid === r.total && d.moves.length === 2, 'kirim hujjati: qarz bo\'lib ko\'rinmaydi', d.doc);
+  const m = await call('GET', `/api/reports/material?from=${today()}&to=${today()}`, null, SES);
+  const row = m.rows.find((q) => q.id === a1);
+  ok(row && Math.abs(row.open_q + row.in_q - row.used_q - row.waste_q + row.inv_q - row.close_q) < 1e-6 && row.close_q === 5 && row.close_v === 400000, 'moddiy hisobot balansda, oxirgi qiymat 400 000', row);
+  r = await call('POST', '/api/stock/opening', { lines: [{ ingredient_id: a1, qty: 5, price: 80000 }] }, DEV);
+  ok(r.status === 401 || r.status === 403, 'faqat rahbar', r.status);
+  for (const i of [a1, a2, a3, a4]) await call('POST', '/api/stock/ingredient/remove', { id: i }, SES);
+}
+
 // ---------- Telegram bot ----------
 group('Telegram bot: buyurtma kassaga tushadi, holat botga qaytadi');
 {

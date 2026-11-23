@@ -70,6 +70,7 @@ const ROUTES = {
   'POST /api/stock/recipe': ['manager', W.saveRecipe],
   'GET /api/stock/recipe-costs': ['manager', W.recipeCosts],
   'POST /api/stock/doc': ['manager', W.saveDoc],
+  'POST /api/stock/opening': ['manager', W.opening],
   'GET /api/stock/docs': ['manager', W.docs],
   'GET /api/stock/doc': ['manager', W.doc],
   'POST /api/stock/doc/cancel': ['manager', W.cancelDoc],

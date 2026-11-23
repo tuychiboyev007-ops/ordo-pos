@@ -280,6 +280,66 @@ export async function saveDoc(req, env, db, auth) {
   return json({ ok: true, id });
 }
 
+/**
+ * Boshlang'ich qoldiq: bir oynada ko'p elementning HAQIQIY qoldig'i va narxi (ombor yuritish boshlanganda yoki
+ * kirim kiritilmay qoldiq manfiyga tushib ketganda). Har satrda `qty` (hozir bori) va/yoki `price` (1 birlik narxi):
+ *   narx yozilgan — qoldiq avval nolga tushiriladi (inventarizatsiya), keyin haqiqiy miqdor shu narxda kirim qilinadi:
+ *     natijada qoldiq = qty, o'rtacha narx AYNAN shu narx (eski noto'g'ri narx aralashmaydi);
+ *   faqat miqdor — oddiy inventarizatsiya (narx o'zgarmaydi);
+ *   faqat narx — miqdor o'zgarmaydi (manfiy bo'lsa 0 dan boshlanadi).
+ * Ikkita hujjat yoziladi (bekor qilsa bo'ladi): «Inventarizatsiya» va «Kirim — Boshlang'ich qoldiq» (pul harakatisiz).
+ */
+export async function opening(req, env, db, auth) {
+  const b = await body(req); const c = auth.c;
+  const lines = Array.isArray(b.lines) ? b.lines.slice(0, 500) : [];
+  const empty = (v) => v === undefined || v === null || v === '';
+  const seen = new Set(); const rows = [];
+  for (const l of lines) {
+    if (empty(l.qty) && empty(l.price)) continue;
+    const id = int(l.ingredient_id);
+    if (seen.has(id)) return fail(400, 'duplicate', 'Bir element ikki marta yozilgan');
+    seen.add(id);
+    const ing = await db.first('SELECT id, name, prep FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, id);
+    if (!ing) return fail(400, 'bad_ingredient', 'Element topilmadi');
+    const q = empty(l.qty) ? null : q3(l.qty);
+    if (q != null && !(q >= 0)) return fail(400, 'bad_qty', `${ing.name} — miqdor noto'g'ri`);
+    const price = empty(l.price) ? null : Number(l.price);
+    if (price != null && !(price > 0)) return fail(400, 'bad_price', `${ing.name} — narx noto'g'ri`);
+    rows.push({ id, prep: !!ing.prep, q, price });
+  }
+  if (!rows.length) return fail(400, 'empty', 'Hech narsa kiritilmagan');
+  rows.sort((x, y) => (x.prep ? 0 : 1) - (y.prep ? 0 : 1) || x.id - y.id);
+  const at = new Date().toISOString();
+  const res = await db.tx(async (tx) => {
+    let invDoc = null; let inDoc = null; let total = 0;
+    const mk = async (kind, note) => (await tx.first('INSERT INTO stock_docs (company_id, kind, note, pay_from, user_id, at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id', c, kind, note, kind === 'kirim' ? 'boshqa' : null, auth.u || null, at)).id;
+    for (const r of rows) {
+      const cur = await tx.first('SELECT stock FROM ingredients WHERE company_id = ? AND id = ? FOR UPDATE', c, r.id);
+      const stock = q3(cur.stock);
+      const target = r.q == null ? Math.max(0, stock) : r.q;
+      if (r.price != null) {
+        if (stock !== 0) { invDoc ||= await mk('inventar', 'Boshlang\'ich qoldiqni kiritish'); await moveStock(tx, c, { ingredient_id: r.id, kind: 'inventar', qty: -stock, doc_id: invDoc, user_id: auth.u, at, note: 'boshlang\'ich qoldiq oldidan: 0' }); }
+        if (target > 0) {
+          inDoc ||= await mk('kirim', 'Boshlang\'ich qoldiq');
+          await moveStock(tx, c, { ingredient_id: r.id, kind: 'kirim', qty: target, price: r.price, doc_id: inDoc, user_id: auth.u, at });
+          total += Math.round(target * r.price);
+        } else await tx.run('UPDATE ingredients SET cost = ? WHERE company_id = ? AND id = ?', r.price, c, r.id); // qoldiq yo'q, lekin narxi ma'lum bo'lsin (taom tannarxi uchun)
+      } else {
+        const diff = q3(target - stock);
+        if (diff) { invDoc ||= await mk('inventar', 'Boshlang\'ich qoldiqni kiritish'); await moveStock(tx, c, { ingredient_id: r.id, kind: 'inventar', qty: diff, doc_id: invDoc, user_id: auth.u, at, note: `sanoq: ${target}` }); }
+      }
+    }
+    // Pul harakati yo'q: bu sotib olish emas, bor mahsulotni tizimga kiritish — «to'landi» deb belgilanadi (qarz bo'lib ko'rinmasin).
+    if (inDoc) await tx.run('UPDATE stock_docs SET total = ?, paid = ? WHERE company_id = ? AND id = ?', total, total, c, inDoc);
+    if (invDoc) {
+      const v = await tx.first('SELECT COALESCE(SUM(qty * cost), 0)::float8 AS v FROM stock_moves WHERE company_id = ? AND doc_id = ?', c, invDoc);
+      await tx.run('UPDATE stock_docs SET total = ? WHERE company_id = ? AND id = ?', Math.round(Math.abs(n(v.v))), c, invDoc);
+    }
+    return { changed: rows.length, inv_doc: invDoc, in_doc: inDoc, total };
+  });
+  return json({ ok: true, ...res });
+}
+
 export async function docs(req, env, db, auth) {
   const url = new URL(req.url);
   const kind = url.searchParams.get('kind');

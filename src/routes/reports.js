@@ -364,14 +364,14 @@ export async function diagnostics(req, env, db, auth) {
   else {
     const neg = ings.filter((i) => n(i.stock) < 0);
     add('Ombor', 'negative', neg.length ? 'bad' : 'ok', neg.length ? `${neg.length} ta elementning qoldig'i manfiy` : 'Manfiy qoldiq yo\'q',
-      neg.length ? `${names(neg)} — sotilgan, lekin kirim kiritilmagan. Kirim qiling yoki inventarizatsiya bilan haqiqiy qoldiqni yozing.` : 'Hamma elementning qoldig\'i noldan yuqori.', 'docs');
+      neg.length ? `${names(neg)} — sotilgan, lekin kirim kiritilmagan. Ombor → Elementlar → «Hammasini to'g'rilash» bilan haqiqiy qoldiq va narxni yozing.` : 'Hamma elementning qoldig\'i noldan yuqori.', 'stock');
     const low = ings.filter((i) => n(i.min_stock) > 0 && n(i.stock) >= 0 && n(i.stock) <= n(i.min_stock));
     if (low.length) add('Ombor', 'low', 'warn', `${low.length} ta element kam qolgan`, `${names(low)} — eng kam qoldiqdan past. Buyurtma bering.`, 'stock');
     const ic = await ingCosts(db, c);
     const usedIds = new Set((await db.all(`SELECT DISTINCT r.ingredient_id AS id FROM recipes r JOIN products p ON p.id = r.product_id AND p.company_id = r.company_id WHERE r.company_id = ? AND p.active = true`, c)).map((r) => r.id));
     const noCost = ings.filter((i) => usedIds.has(i.id) && !((ic.get(i.id) || 0) > 0));
     add('Ombor', 'no_cost', noCost.length ? 'bad' : 'ok', noCost.length ? `${noCost.length} ta elementning narxi yo'q` : 'Texkartadagi hamma elementning narxi bor',
-      noCost.length ? `${names(noCost)} — texkartada bor, lekin hali kirim qilinmagan. Shu sababli taom tannarxi va foyda noto'g'ri chiqadi. Ombor → Kirim qiling.` : 'Taom tannarxi to\'liq hisoblanyapti.', 'docs');
+      noCost.length ? `${names(noCost)} — texkartada bor, lekin hali kirim qilinmagan. Shu sababli taom tannarxi va foyda noto'g'ri chiqadi. Ombor → Elementlar → «Hammasini to'g'rilash» bilan narxini yozing.` : 'Taom tannarxi to\'liq hisoblanyapti.', 'stock');
     if (pm.totals.cost > 0) {
       const wp = pc(pm.totals.waste, pm.totals.cost);
       add('Ombor', 'waste', wp > 6 ? 'bad' : wp > 3 ? 'warn' : 'ok', pm.totals.waste ? `Utilizatsiya: ${fmt(pm.totals.waste)} so'm (${pctText(wp)})` : 'Utilizatsiya yozilmagan',

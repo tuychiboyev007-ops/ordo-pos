@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 271 ta)
+npm test         # API sinovlari (PGlite, 283 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -148,6 +148,12 @@ Muhim qoidalar:
   toifalar, nazorat, eng ko'p sotilgan 15 taom, ombor qiymati, qarzlar; «Chop etish / PDF» (`window.print()`, `@media print`
   A4) va Excel (CSV, hamma bo'lim). Alohida server yo'li YO'Q — mavjud yo'llardan ketma-ket yig'iladi (`analytics`, `summary`,
   `expenses`, `material`, `shifts`, `debts`, `suppliers`), shuning uchun raqamlar boshqa hisobotlar bilan aynan bir xil.
+- **Qoldiq va narxni to'g'rilash** (`openingForm`, `POST /api/stock/opening`, `stock.opening`): hamma element bitta jadvalda —
+  «haqiqatda bor» va «1 birlik narxi»; bo'sh satr o'zgarmaydi. Narx yozilsa qoldiq avval nolga tushiriladi (inventarizatsiya),
+  keyin haqiqiy miqdor shu narxda kirim qilinadi — o'rtacha narx AYNAN yozilgan narx bo'ladi (eski noto'g'ri narx yoki manfiy
+  qoldiq aralashmaydi). Ikki hujjat yoziladi (pul harakatisiz, bekor qilsa bo'ladi). Elementlar sahifasida manfiy qoldiq yoki
+  narxsiz element bo'lsa qizil ogohlantirish va «Hammasini to'g'rilash» tugmasi chiqadi; Diagnostika ham shu yerga yo'naltiradi.
+  Egasi "to'g'irla" dedi — haqiqiy son va narxni faqat u biladi, jonli bazaga Claude yozmaydi (o'qishga ham ruxsat berilmagan).
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

@@ -454,8 +454,12 @@ PAGES.stock = async (m) => {
   const total = d.ingredients.reduce((s, i) => s + Math.max(0, i.value), 0);
   const low = d.ingredients.filter((i) => i.low).length;
   const neg = d.ingredients.filter((i) => i.stock < 0).length;
+  const noPrice = d.ingredients.filter((i) => !(i.cost > 0)).length;
   m.innerHTML = head('Ombor qoldig\'i', 'Elementlar — kirim bilan ko\'payadi, taom sotilganda texkarta bo\'yicha kamayadi',
-    `<button class="btn" data-doc="kirim">${icon('truckin')}Kirim</button><button class="btn" data-doc="utilizatsiya">${icon('trash')}Utilizatsiya</button><button class="btn" data-doc="inventar">${icon('check')}Inventarizatsiya</button><button class="btn primary" id="add">${icon('plus')}Element</button>`)
+    `<button class="btn" id="opening" title="Hamma elementning haqiqiy qoldig'i va narxini bitta oynada yozish">${icon('edit')}Qoldiq va narx</button><button class="btn" data-doc="kirim">${icon('truckin')}Kirim</button><button class="btn" data-doc="utilizatsiya">${icon('trash')}Utilizatsiya</button><button class="btn" data-doc="inventar">${icon('check')}Inventarizatsiya</button><button class="btn primary" id="add">${icon('plus')}Element</button>`)
+    + (neg || noPrice ? `<div class="card fixbox"><span class="ic">${icon('alert')}</span><div><b>${[neg ? `${neg} ta elementning qoldig'i manfiy` : '', noPrice ? `${noPrice} tasining narxi yo'q` : ''].filter(Boolean).join(', ')}</b>
+        <div>Shu sababli taom tannarxi va foyda noto'g'ri chiqadi. Hozir omborda haqiqatda qancha borligini va narxini <b>bitta oynada</b> yozib chiqing — hammasi bir yo'la to'g'rilanadi.</div></div>
+        <button class="btn primary" id="fixall">${icon('check')}Hammasini to'g'rilash</button></div>` : '')
     + `<div class="stats">${stat('Ombor qiymati (tannarxda)', sum(total), `${d.ingredients.length} ta element`, 'accent')}${stat('Kam qolgan', low, 'eng kam qoldiqdan past')}${stat('Manfiy qoldiq', `<span class="${neg ? 'neg' : ''}">${neg}</span>`, 'kirim kiritilmagan')}</div>
     <div class="card mt"><div class="card-h"><input class="input" id="q" placeholder="Qidirish: nomi yoki guruhi" value="${esc(A.stockQ || '')}" style="max-width:340px"><span class="grow"></span></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Element</th><th>Guruh</th><th class="r">Qoldiq</th><th class="r">Eng kam</th><th class="r">1 birlik narxi</th><th class="r">Qiymati</th><th class="r">Taomlarda</th><th></th></tr></thead><tbody>
@@ -466,6 +470,8 @@ PAGES.stock = async (m) => {
     </tbody></table></div></div>`;
   $('#q').oninput = (e) => { A.stockQ = e.target.value; clearTimeout(A.qt); A.qt = setTimeout(() => show('stock').then(() => { const i = $('#q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
   $('#add').onclick = () => ingredientForm();
+  $('#opening').onclick = () => openingForm('all');
+  $('#fixall')?.addEventListener('click', () => openingForm(neg ? 'neg' : 'nc'));
   $$('[data-doc]', m).forEach((b) => b.onclick = () => docForm(b.dataset.doc));
   $$('[data-edit]', m).forEach((b) => b.onclick = async (e) => {
     e.stopPropagation(); const ig = d.ingredients.find((i) => i.id === Number(b.dataset.edit));
@@ -628,6 +634,85 @@ async function ingredientForm(ing = null) {
       });
     },
   }).then((res) => { if (res || A.ingDirty) { A.ingDirty = false; show(A.page); } });
+}
+
+/**
+ * Qoldiq va narxni to'g'rilash: hamma element bitta jadvalda — «haqiqatda bor» va «1 birlik narxi».
+ * Bo'sh qoldirilgan satr o'zgarmaydi. Ombor yuritish boshlanganda yoki kirim kiritilmay qoldiq manfiyga tushganda ishlatiladi.
+ */
+async function openingForm(pref = 'all') {
+  const ings = (await S('/api/stock/ingredients')).ingredients;
+  if (!ings.length) { toast('Avval element qo\'shing', 'bad'); return; }
+  const cnt = { all: ings.length, neg: ings.filter((i) => i.stock < 0).length, nc: ings.filter((i) => !(i.cost > 0)).length };
+  let filter = cnt[pref] ? pref : 'all';
+  const res = await openModal({
+    title: 'Qoldiq va narxni to\'g\'rilash', size: 'xl',
+    body: `<p class="hint" style="margin-bottom:12px">Har element uchun hozir omborda <b>haqiqatda</b> qancha borligini va <b>1 birlik narxini</b> (1 kg, 1 litr, 1 dona necha so'm) yozing. Bo'sh qoldirilgan satr o'zgarmaydi. Narx yozilsa qoldiq shu narxda qaytadan yoziladi — eski noto'g'ri narx aralashmaydi.</p>
+      <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:10px"><input class="input" data-oq placeholder="Qidirish" style="max-width:260px">
+        <div class="seg" data-of>${[['all', 'Hammasi'], ['neg', 'Manfiy qoldiq'], ['nc', 'Narxi yo\'q']].map(([k, l]) => `<button type="button" data-f="${k}" class="${k === filter ? 'on' : ''}">${l} · ${cnt[k]}</button>`).join('')}</div></div>
+      <div class="lines op" data-ol><div class="ln h"><span>Element</span><span class="r">Tizimda</span><span>Haqiqatda bor</span><span>1 birlik narxi (so'm)</span><span class="r">Qiymati</span></div>
+        ${ings.map((i) => `<div class="ln" data-op="${i.id}" data-neg="${i.stock < 0 ? 1 : 0}" data-nc="${i.cost > 0 ? 0 : 1}"><span class="nm"><b>${esc(i.name)}</b>${i.grp ? `<small>${esc(i.grp)}</small>` : ''}</span>
+          <span class="r ${i.stock < 0 ? 'neg' : 'dim'}">${qty(i.stock, i.unit)}</span><div class="unitbox"><input class="input" data-q inputmode="decimal" placeholder="sanaldi"><span>${UNIT[i.unit]}</span></div>
+          <input class="input money" data-p inputmode="numeric" placeholder="${i.cost > 0 ? sum(Math.round(i.cost)) : 'narxi'}"><span class="sum" data-s></span></div>`).join('')}
+        <div class="empty" data-oe hidden>Bunday element yo'q</div></div>
+      <div class="foodcost"><div>To'ldirilgan<b data-on>0</b></div><div>Kiritilgan qoldiq qiymati<b data-ov>0</b></div><div>Narxi yozilmagan<b data-om>0</b></div></div>`,
+    foot: `<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
+    onOpen: (mm, close) => {
+      const byId = Object.fromEntries(ings.map((i) => [i.id, i]));
+      const rows = $$('[data-op]', mm);
+      rows.forEach((r) => moneyInput(r.querySelector('[data-p]')));
+      const read = () => rows.map((r) => {
+        const i = byId[r.dataset.op]; const qi = r.querySelector('[data-q]'); const pi = r.querySelector('[data-p]');
+        const qp = qtyParse(qi.value, i.unit); const price = moneyVal(pi);
+        return { r, i, qi, pi, qp, hasQ: !!qi.value.trim(), price, touched: !!qi.value.trim() || price > 0 };
+      });
+      const calc = () => {
+        let n = 0; let val = 0; let miss = 0;
+        for (const x of read()) {
+          x.qi.classList.toggle('bad', !x.qp.ok);
+          const unitPrice = x.price || (x.i.cost > 0 ? x.i.cost : 0); const amount = x.hasQ ? x.qp.v : Math.max(0, x.i.stock);
+          x.r.classList.toggle('touched', x.touched);
+          x.r.querySelector('[data-s]').textContent = x.touched && unitPrice ? sum(Math.round(amount * unitPrice)) : x.touched ? 'narxi yo\'q' : '';
+          if (!x.touched) continue;
+          n++; val += amount * unitPrice; if (!unitPrice) miss++;
+        }
+        mm.querySelector('[data-on]').textContent = `${n} ta`; mm.querySelector('[data-ov]').textContent = sum(Math.round(val)); mm.querySelector('[data-om]').textContent = `${miss} ta`;
+      };
+      const view = () => {
+        const q = mm.querySelector('[data-oq]').value.trim().toLowerCase(); let shown = 0;
+        for (const r of rows) { const i = byId[r.dataset.op];
+          const okF = filter === 'all' || (filter === 'neg' ? r.dataset.neg === '1' : r.dataset.nc === '1') || r.classList.contains('touched');
+          const okQ = !q || i.name.toLowerCase().includes(q) || (i.grp || '').toLowerCase().includes(q);
+          r.hidden = !(okF && okQ); if (!r.hidden) shown++; }
+        mm.querySelector('[data-oe]').hidden = shown > 0;
+        $$('[data-f]', mm).forEach((b) => b.classList.toggle('on', b.dataset.f === filter));
+      };
+      $$('[data-f]', mm).forEach((b) => b.onclick = () => { filter = b.dataset.f; view(); });
+      mm.querySelector('[data-oq]').addEventListener('input', view);
+      mm.querySelector('[data-ol]').addEventListener('input', calc);
+      // Enter — keyingi satrning shu ustuniga (ro'yxatni tez to'ldirish uchun)
+      mm.querySelector('[data-ol]').addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return; e.preventDefault();
+        const col = e.target.matches('[data-q]') ? '[data-q]' : '[data-p]'; const vis = rows.filter((r) => !r.hidden); const at = vis.indexOf(e.target.closest('[data-op]'));
+        (col === '[data-q]' ? vis[at]?.querySelector('[data-p]') : vis[at + 1]?.querySelector('[data-q]'))?.focus();
+      });
+      view(); calc();
+      mm.querySelector('[data-ok]').onclick = async () => {
+        const all = read().filter((x) => x.touched);
+        if (!all.length) { toast('Hech narsa yozilmagan — kamida bitta elementning qoldig\'i yoki narxini yozing', 'bad'); return; }
+        const badQ = all.find((x) => !x.qp.ok);
+        if (badQ) { toast(`${badQ.i.name} — miqdor son bo'lsin: masalan 10, 0,5 yoki «500 g»`, 'bad'); badQ.r.hidden = false; badQ.qi.focus(); return; }
+        const miss = all.filter((x) => !x.price && !(x.i.cost > 0));
+        if (miss.length && !(await confirmBox(`${miss.length} ta elementda narx yozilmagan (${miss.slice(0, 3).map((x) => x.i.name).join(', ')}${miss.length > 3 ? '…' : ''}) — ularning tannarxi noma'lum qoladi. Shunday saqlansinmi?`, { ok: 'Ha, saqlansin' }))) return;
+        const btn = mm.querySelector('[data-ok]'); btn.disabled = true;
+        try {
+          const r = await P('/api/stock/opening', { lines: all.map((x) => ({ ingredient_id: x.i.id, qty: x.hasQ ? x.qp.v : undefined, price: x.price || undefined })) });
+          toast(`${r.changed} ta element to'g'rilandi${r.total ? ` — ombor qiymati ${sum(r.total)} so'm` : ''}`, 'ok'); close(true);
+        } catch (e) { btn.disabled = false; fail(e); }
+      };
+    },
+  });
+  if (res) show('stock');
 }
 
 /** Element tanlash maydoni (qidiruv bilan). */
