@@ -360,3 +360,9 @@ body{user-select:none}
 .modal .input.bad{border-color:var(--bad);background:#fff5f5}
 @media (max-width:1180px){.k-top .when{display:none}.k-top{gap:10px;padding:0 14px}}
 @media (max-width:900px){.k-top .qadd{padding:0 10px}.k-top .me .nm{display:none}}
+
+/* Tarix: to'lov turini tuzatish */
+.pmrow{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--line-2)}
+.pmrow:first-of-type{border-top:0}
+.pmrow b{font-size:18px}
+.pmrow .chips{gap:8px}

@@ -99,6 +99,13 @@ function rememberClosed(doc) {
   S.recent = [doc, ...S.recent.filter((o) => o.id !== doc.id)].slice(0, 300);
 }
 
+/** Yopilgan chek serverda o'zgardi (to'lov turi tuzatildi) — mahalliy tarixdagi nusxasi ham yangilanadi (o'rni o'zgarmaydi). */
+export function updateRecent(doc) {
+  if (!doc?.id || !S.recent.some((o) => o.id === doc.id)) return;
+  S.recent = S.recent.map((o) => (o.id === doc.id ? doc : o));
+  persist(); emit();
+}
+
 export function nextNumber(shiftId) {
   const c = LS.get('ordo.counter', { shift: null, n: 0 });
   if (c.shift !== shiftId) { c.shift = shiftId; c.n = 0; }

@@ -13,20 +13,44 @@ const UNITS = ['kg', 'l', 'dona'];
 const n = (v) => Number(v) || 0;
 
 export async function ingredients(req, env, db, auth) {
-  const rows = await db.all(`SELECT id, name, unit, stock, cost, min_stock, grp, prep, yield FROM ingredients WHERE company_id = ? AND active = true ORDER BY grp NULLS LAST, name`, auth.c);
+  const rows = await db.all(`SELECT id, name, unit, stock, cost, min_stock, grp, prep, yield, prep_kind FROM ingredients WHERE company_id = ? AND active = true ORDER BY grp NULLS LAST, name`, auth.c);
   const used = await db.all(`SELECT r.ingredient_id, COUNT(*)::int AS n FROM recipes r JOIN products p ON p.id = r.product_id AND p.company_id = r.company_id
     WHERE r.company_id = ? AND p.active = true GROUP BY r.ingredient_id`, auth.c);
   const u = Object.fromEntries(used.map((x) => [x.ingredient_id, x.n]));
   // Zagotovkaning narxi — tarkibidan hisoblangani (hali tayyorlanmagan bo'lsa ham taom tannarxi ma'lum bo'lsin).
   const ic = rows.some((r) => r.prep) ? await ingCosts(db, auth.c) : null;
-  return json({ ok: true, ingredients: rows.map((r) => { const cost = r.prep && ic ? ic.get(r.id) || n(r.cost) : n(r.cost); return { ...r, prep: !!r.prep, yield: n(r.yield) || 1, stock: n(r.stock), cost, min_stock: n(r.min_stock),
+  return json({ ok: true, ingredients: rows.map((r) => { const cost = r.prep && ic ? ic.get(r.id) || n(r.cost) : n(r.cost); return { ...r, prep: !!r.prep, prep_kind: r.prep ? prepKind(r.prep_kind) : '', yield: n(r.yield) || 1, stock: n(r.stock), cost, min_stock: n(r.min_stock),
     value: Math.round(n(r.stock) * (r.prep && n(r.cost) > 0 ? n(r.cost) : cost)), dishes: u[r.id] || 0, low: n(r.stock) <= n(r.min_stock) }; }) });
 }
 
-/** Zagotovkalar (yarim tayyor mahsulot) — tarkibi, 1 birlik tannarxi, tayyor qoldig'i. */
+const PREP_KINDS = ['zagotovka', 'marinovka'];
+const prepKind = (v) => (v === 'marinovka' ? 'marinovka' : 'zagotovka');
+const hours = (v) => Math.min(24 * 60, Math.max(0, Math.round((Number(String(v ?? '').replace(',', '.')) || 0) * 10) / 10));
+
+/**
+ * Oxirgi partiyaning holati (marinovka uchun): marinadlanmoqda → tayyor → muddati o'tgan.
+ * Qoldiq partiyalar bo'yicha yuritilmaydi, shuning uchun bu OXIRGI partiya haqida: omborda tayyori bo'lmasa holat yo'q.
+ */
+export function batchState(p, now = Date.now()) {
+  if (!p.last || !(p.stock > 0)) return null;
+  const at = new Date(p.last.at).getTime();
+  const ready = at + (p.marin_hours || 0) * 3600e3;
+  const exp = p.keep_hours > 0 ? at + p.keep_hours * 3600e3 : null;
+  const state = exp && now >= exp ? 'expired' : now < ready ? 'marinating' : 'ready';
+  return { state, ready_at: new Date(ready).toISOString(), expires_at: exp ? new Date(exp).toISOString() : null };
+}
+
+/** Zagotovkalar (yarim tayyor mahsulot) va marinovkalar — tarkibi, 1 birlik tannarxi, tayyor qoldig'i, oxirgi partiya. */
 export async function preps(req, env, db, auth) {
   const c = auth.c;
-  const rows = await db.all('SELECT id, name, unit, stock, cost, min_stock, grp, yield FROM ingredients WHERE company_id = ? AND active = true AND prep = true ORDER BY name', c);
+  const rows = await db.all('SELECT id, name, unit, stock, cost, min_stock, grp, yield, prep_kind, marin_hours, keep_hours FROM ingredients WHERE company_id = ? AND active = true AND prep = true ORDER BY name', c);
+  // Har zagotovkaning oxirgi (bekor qilinmagan) tayyorlash partiyasi — bitta so'rovda.
+  const lastRows = await db.all(`SELECT DISTINCT ON (m.ingredient_id) m.ingredient_id, m.qty, m.at, m.doc_id FROM stock_moves m
+    JOIN ingredients i ON i.id = m.ingredient_id AND i.company_id = m.company_id
+    LEFT JOIN stock_docs d ON d.id = m.doc_id AND d.company_id = m.company_id
+    WHERE m.company_id = ? AND m.kind = 'tayyorlash' AND m.qty > 0 AND i.prep = true AND d.cancelled_at IS NULL
+    ORDER BY m.ingredient_id, m.id DESC`, c);
+  const lastOf = Object.fromEntries(lastRows.map((x) => [x.ingredient_id, { at: x.at, qty: n(x.qty), doc_id: x.doc_id }]));
   const lines = await db.all(`SELECT l.prep_id, l.ingredient_id, l.qty, i.name, i.unit, i.cost, i.stock FROM prep_lines l
     JOIN ingredients i ON i.id = l.ingredient_id AND i.company_id = l.company_id WHERE l.company_id = ? ORDER BY i.name`, c);
   const used = await db.all(`SELECT r.ingredient_id, COUNT(*)::int AS n FROM recipes r JOIN products p ON p.id = r.product_id AND p.company_id = r.company_id
@@ -36,8 +60,10 @@ export async function preps(req, env, db, auth) {
   return json({ ok: true, preps: rows.map((r) => {
     const ls = lines.filter((l) => l.prep_id === r.id).map((l) => ({ ingredient_id: l.ingredient_id, name: l.name, unit: l.unit, qty: n(l.qty), cost: n(l.cost), stock: n(l.stock), sum: Math.round(n(l.qty) * n(l.cost)) }));
     const y = n(r.yield) || 1; const batch = ls.reduce((s, l) => s + l.sum, 0);
-    return { id: r.id, name: r.name, unit: r.unit, grp: r.grp, yield: y, stock: n(r.stock), min_stock: n(r.min_stock), lines: ls, batch_cost: batch,
+    const p = { id: r.id, name: r.name, unit: r.unit, grp: r.grp, kind: prepKind(r.prep_kind), marin_hours: n(r.marin_hours), keep_hours: n(r.keep_hours),
+      yield: y, stock: n(r.stock), min_stock: n(r.min_stock), lines: ls, batch_cost: batch, last: lastOf[r.id] || null,
       cost: Math.round(ic.get(r.id) || 0), no_cost: ls.filter((l) => !(l.cost > 0)).length, dishes: u[r.id] || 0, low: n(r.stock) <= n(r.min_stock) && n(r.min_stock) > 0 };
+    return { ...p, batch: batchState(p) };
   }) });
 }
 
@@ -51,6 +77,8 @@ export async function savePrep(req, env, db, auth) {
   const unit = UNITS.includes(b.unit) ? b.unit : 'kg';
   const y = q3(b.yield); if (!(y > 0)) return fail(400, 'bad_yield', 'Shu tarkibdan qancha chiqishini yozing');
   const min = Math.max(0, q3(b.min_stock)); const grp = str(b.grp, 40);
+  // Turi yuborilmasa (eski oyna) — mavjud zagotovkaning turi o'zgarmaydi.
+  const kindIn = PREP_KINDS.includes(b.kind) ? b.kind : null;
   const lines = Array.isArray(b.lines) ? b.lines.slice(0, 60) : [];
   if (!lines.length) return fail(400, 'empty', 'Tarkibini yozing — zagotovka nimadan tayyorlanadi');
   const dup = await db.first('SELECT id FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?) AND id <> ?', c, name, id);
@@ -66,28 +94,34 @@ export async function savePrep(req, env, db, auth) {
     if (!ing) return fail(400, 'bad_ingredient', 'Element topilmadi');
     if (ing.prep) return fail(400, 'nested', 'Zagotovka tarkibiga boshqa zagotovka qo\'yilmaydi — oddiy elementlarni yozing');
   }
+  let ex = null;
   if (id) {
-    const ex = await db.first('SELECT id, unit FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, id);
+    ex = await db.first('SELECT id, unit, prep, prep_kind, marin_hours, keep_hours FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, id);
     if (!ex) return fail(404, 'not_found');
     const moved = await db.first('SELECT id FROM stock_moves WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id);
     if (moved && ex.unit !== unit) return fail(409, 'unit_locked', 'Harakati bor elementning o\'lchov birligi o\'zgarmaydi');
     if (await db.first('SELECT prep_id FROM prep_lines WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id)) return fail(400, 'nested', 'Bu element boshqa zagotovka tarkibida turibdi — avval u yerdan olib tashlang');
   }
+  const kind = kindIn || (ex?.prep ? prepKind(ex.prep_kind) : 'zagotovka');
+  const pk = kind === 'marinovka' ? 'marinovka' : '';
+  // Vaqtlar faqat marinovkada; yuborilmasa eskisi qoladi.
+  const mh = pk ? (b.marin_hours === undefined ? n(ex?.marin_hours) : hours(b.marin_hours)) : 0;
+  const kh = pk ? (b.keep_hours === undefined ? n(ex?.keep_hours) : hours(b.keep_hours)) : 0;
   const pid = await db.tx(async (tx) => {
     let rid = id;
-    if (id) await tx.run('UPDATE ingredients SET name = ?, unit = ?, min_stock = ?, grp = ?, prep = true, yield = ? WHERE company_id = ? AND id = ?', name, unit, min, grp, y, c, id);
-    else rid = (await tx.first('INSERT INTO ingredients (company_id, name, unit, min_stock, grp, prep, yield) VALUES (?, ?, ?, ?, ?, true, ?) RETURNING id', c, name, unit, min, grp, y)).id;
+    if (id) await tx.run('UPDATE ingredients SET name = ?, unit = ?, min_stock = ?, grp = ?, prep = true, yield = ?, prep_kind = ?, marin_hours = ?, keep_hours = ? WHERE company_id = ? AND id = ?', name, unit, min, grp, y, pk, mh, kh, c, id);
+    else rid = (await tx.first('INSERT INTO ingredients (company_id, name, unit, min_stock, grp, prep, yield, prep_kind, marin_hours, keep_hours) VALUES (?, ?, ?, ?, ?, true, ?, ?, ?, ?) RETURNING id', c, name, unit, min, grp, y, pk, mh, kh)).id;
     await tx.run('DELETE FROM prep_lines WHERE company_id = ? AND prep_id = ?', c, rid);
     for (const l of lines) await tx.run('INSERT INTO prep_lines (company_id, prep_id, ingredient_id, qty) VALUES (?, ?, ?, ?)', c, rid, int(l.ingredient_id), q3(l.qty));
     return rid;
   });
-  return json({ ok: true, id: pid });
+  return json({ ok: true, id: pid, kind });
 }
 
 /** Zagotovkani yana oddiy elementga qaytarish (tarkibi o'chadi, qoldig'i va texkartalardagi o'rni qoladi). */
 export async function unprep(req, env, db, auth) {
   const b = await body(req); const c = auth.c; const id = int(b.id);
-  const r = await db.all('UPDATE ingredients SET prep = false, yield = 1 WHERE company_id = ? AND id = ? AND prep = true RETURNING id', c, id);
+  const r = await db.all("UPDATE ingredients SET prep = false, yield = 1, prep_kind = '', marin_hours = 0, keep_hours = 0 WHERE company_id = ? AND id = ? AND prep = true RETURNING id", c, id);
   if (!r.length) return fail(404, 'not_found');
   await db.run('DELETE FROM prep_lines WHERE company_id = ? AND prep_id = ?', c, id);
   return json({ ok: true });
@@ -346,10 +380,16 @@ export async function docs(req, env, db, auth) {
   const from = url.searchParams.get('from'); const to = url.searchParams.get('to') || from;
   if (!isDay(from) || !isDay(to)) return fail(400, 'bad_range', 'Sana noto\'g\'ri');
   const [f, t] = dayRange(from, to);
+  // prep_kind — «Tayyorlash» hujjatlarini turiga ajratish: Zagotovkalar va Marinovka sahifalari o'zinikini ko'rsatadi.
+  const pk = PREP_KINDS.includes(url.searchParams.get('prep_kind')) ? url.searchParams.get('prep_kind') : '';
   const rows = await db.all(`SELECT d.id, d.kind, d.reason, d.note, d.total::float8 AS total, d.paid::float8 AS paid, d.pay_from, d.at, d.cancelled_at,
     s.name AS supplier, u.name AS user_name, (SELECT COUNT(*)::int FROM stock_moves m WHERE m.company_id = d.company_id AND m.doc_id = d.id AND m.kind <> 'bekor') AS lines
     FROM stock_docs d LEFT JOIN suppliers s ON s.id = d.supplier_id AND s.company_id = d.company_id LEFT JOIN users u ON u.id = d.user_id AND u.company_id = d.company_id
-    WHERE d.company_id = ? AND d.at >= ? AND d.at < ? AND (? = '' OR d.kind = ?) ORDER BY d.at DESC LIMIT 500`, auth.c, f, t, kind || '', kind || '');
+    WHERE d.company_id = ? AND d.at >= ? AND d.at < ? AND (? = '' OR d.kind = ?)
+      AND (? = '' OR EXISTS (SELECT 1 FROM stock_moves m2 JOIN ingredients i2 ON i2.id = m2.ingredient_id AND i2.company_id = m2.company_id
+        WHERE m2.company_id = d.company_id AND m2.doc_id = d.id AND m2.qty > 0 AND i2.prep = true
+          AND (CASE WHEN i2.prep_kind = 'marinovka' THEN 'marinovka' ELSE 'zagotovka' END) = ?))
+    ORDER BY d.at DESC LIMIT 500`, auth.c, f, t, kind || '', kind || '', pk, pk);
   return json({ ok: true, docs: rows });
 }
 

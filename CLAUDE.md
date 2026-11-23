@@ -22,7 +22,7 @@ kalit, PIN yoki mijoz ma'lumoti yozmang — hamma ko'radi.
 
 ```bash
 npm run dev      # http://localhost:4310 — PGlite (.data/pg), internetdagi bazadan ALOHIDA
-npm test         # API sinovlari (PGlite, 307 ta)
+npm test         # API sinovlari (PGlite, 328 ta)
 node dev/sinov-jonli.mjs   # JONLI sayt sinovi: namuna restoranda buyurtma yo'li, hisobotlar, himoya (Mazza'da faqat o'qiydi)
 ```
 
@@ -163,6 +163,19 @@ Muhim qoidalar:
   kassa (`store.js` `pull`) o'zgarganini ko'rsa mahalliy tarixni (`ordo.recent`, `ordo.failed`, chek hisoblagichi) tashlaydi.
   Yangi jadval qo'shsangiz `SALES_TABLES` / `STOCK_TABLES` (admin.js) ro'yxatiga kiriting — aks holda tozalashdan keyin qoladi.
   Jonli Mazza'da tugmani **egasi o'zi** bosadi — Claude jonli ma'lumotni o'chirmaydi.
+- **Kassada to'lov turini o'zgartirish** (egasi: "chek to'lov turini o'zgartirish"): kassa → «Buyurtmalar» (tarix) → chek →
+  «To'lov turini o'zgartirish» (`changePayMethod`, kassa.js). Server yo'li o'sha — `POST /api/order/pay-method` (rahbar sessiyasi).
+  `managerToken(title)`: egasi/menejer o'zi kirgan bo'lsa `MGR` belgisi, kassir bo'lsa menejer tanlanib PIN kiritiladi va
+  `/api/pin` dan belgi olinadi (PIN serverda tekshiriladi — `approve()` dagi mahalliy tekshiruvdan farqi; internet kerak).
+  Nasiya (`qarz`) to'lovi bu yerda o'zgarmaydi. `store.js` `updateRecent(doc)` mahalliy tarixdagi nusxani yangilaydi.
+- **Marinovka** (egasi: "marinadlash hisobi"): zagotovkaning TURI — `ingredients.prep_kind` ('' | 'marinovka'), `marin_hours`
+  (necha soatda tayyor), `keep_hours` (saqlash muddati; ikkalasi ixtiyoriy). Hisob-kitob zagotovkaniki bilan AYNAN bir xil
+  (tarkib, `yield`, `tayyorlash` hujjati, sotuvda tayyoridan yoki tarkibidan ayirish) — alohida yo'l yozilmagan.
+  `GET /api/stock/preps` har birida `kind`, `last` (oxirgi bekor qilinmagan partiya) va `batch` (`batchState`:
+  `marinating | ready | expired`, faqat omborda tayyori bo'lsa; qoldiq partiyalab yuritilmaydi — bu OXIRGI partiya haqida).
+  `savePrep`: `kind` yuborilmasa turi, vaqt yuborilmasa vaqt o'zgarmaydi. `GET /api/stock/docs?prep_kind=` — hujjatlarni turiga
+  ajratadi. Panel: Ombor → **Marinovka** (`PAGES.marin`; `prepsPage(m, kind)` Zagotovkalar bilan umumiy, matnlar `PREP_T`),
+  kartada «Turi» tugmalari, «Marinadlash» oynasida **element bo'yicha** kiritish («20 kg go'sht» → tayyor mahsulot o'zi hisoblanadi).
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

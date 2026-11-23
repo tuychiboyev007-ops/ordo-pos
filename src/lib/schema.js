@@ -104,6 +104,10 @@ export const SCHEMA = [
   // Zagotovka (yarim tayyor mahsulot): kotlet, sous, xamir… O'zi ham masalliq (omborda qoldig'i bo'ladi, taom texkartasiga
   // qo'yiladi), lekin tarkibi bor: `yield` birlik zagotovka uchun `prep_lines` dagi masalliqlar ketadi.
   `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS prep BOOLEAN NOT NULL DEFAULT false`,
+  // Zagotovka turi: '' — oddiy zagotovka, 'marinovka' — marinadlangan mahsulot (necha soatda tayyor, necha soat saqlanadi).
+  `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS prep_kind TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS marin_hours DOUBLE PRECISION NOT NULL DEFAULT 0`,
+  `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS keep_hours DOUBLE PRECISION NOT NULL DEFAULT 0`,
   `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS yield DOUBLE PRECISION NOT NULL DEFAULT 1`,
   `CREATE TABLE IF NOT EXISTS prep_lines (
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,

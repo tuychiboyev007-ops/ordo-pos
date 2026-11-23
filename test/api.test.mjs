@@ -928,6 +928,70 @@ group('Oshxona ekrani: taom tayyor (to\'langan buyurtmada ham)');
   await sync([op('shift.close', { shift_id: SK, counted: 42000 })]);
 }
 
+// ---------- Marinovka ----------
+group('Marinovka: zagotovkaning turi, marinadlanish vaqti, partiya holati');
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  const preps = async () => (await call('GET', '/api/stock/preps', null, SES)).preps;
+  const tovuq = await mk('Tovuq M', 'kg'); const piyozM = await mk('Piyoz M', 'kg'); const zir = await mk('Ziravor M', 'kg');
+  r = await call('POST', '/api/stock/doc', { kind: 'kirim', lines: [{ ingredient_id: tovuq, qty: 30, price: 40000 }, { ingredient_id: piyozM, qty: 5, price: 5000 }, { ingredient_id: zir, qty: 1, price: 100000 }] }, SES);
+  ok(r.ok, 'xom mahsulot kirim qilindi', r);
+
+  r = await call('POST', '/api/stock/prep', { kind: 'marinovka', marin_hours: 4, keep_hours: 48, name: 'Marinadlangan tovuq M', unit: 'kg', yield: 11,
+    lines: [{ ingredient_id: tovuq, qty: 10 }, { ingredient_id: piyozM, qty: 1 }, { ingredient_id: zir, qty: 0.2 }] }, SES);
+  ok(r.ok && r.id && r.kind === 'marinovka', 'marinovka saqlandi: 10 kg tovuq + 1 kg piyoz + 200 g ziravor → 11 kg', r);
+  const mar = r.id;
+  let p = (await preps()).find((x) => x.id === mar);
+  ok(p.kind === 'marinovka' && p.marin_hours === 4 && p.keep_hours === 48, 'turi va vaqtlari qaytadi', p);
+  ok(p.last === null && p.batch === null, 'hali marinadlanmagan — partiya yo\'q', [p.last, p.batch]);
+  // 1 kg tannarxi: (10×40000 + 1×5000 + 0.2×100000) / 11 = 425000 / 11
+  ok(p.cost === Math.round(425000 / 11), '1 kg marinad tannarxi tarkibdan hisoblanadi', p.cost);
+  const ing = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === mar);
+  ok(ing.prep === true && ing.prep_kind === 'marinovka', 'elementlar ro\'yxatida ham marinovka deb belgilangan', ing);
+  const kotZ = (await preps()).find((x) => x.name === 'Kotlet Z');
+  ok(kotZ && kotZ.kind === 'zagotovka', 'eski zagotovkalar zagotovkaligicha qoladi', kotZ?.kind);
+
+  // Marinadlash: 22 kg chiqdi → 20 kg tovuq, 2 kg piyoz, 400 g ziravor ombordan chiqadi
+  r = await call('POST', '/api/stock/doc', { kind: 'tayyorlash', note: 'ertalabki', lines: [{ ingredient_id: mar, qty: 22 }] }, SES);
+  ok(r.ok, 'marinadlash yozildi', r);
+  const docId = r.id;
+  const st = Object.fromEntries((await call('GET', '/api/stock/ingredients', null, SES)).ingredients.map((x) => [x.id, x]));
+  ok(near(st[tovuq].stock, 10) && near(st[piyozM].stock, 3) && near(st[zir].stock, 0.6) && near(st[mar].stock, 22), 'xom mahsulot chiqdi, marinad omborga tushdi', [st[tovuq].stock, st[piyozM].stock, st[zir].stock, st[mar].stock]);
+  p = (await preps()).find((x) => x.id === mar);
+  ok(p.last && near(p.last.qty, 22) && p.batch?.state === 'marinating', 'yangi partiya — marinadlanmoqda', p.batch);
+  ok(Math.abs(new Date(p.batch.ready_at) - new Date(p.last.at) - 4 * 3600e3) < 1000 && Math.abs(new Date(p.batch.expires_at) - new Date(p.last.at) - 48 * 3600e3) < 1000, 'tayyor bo\'lish va saqlash muddati partiya vaqtidan hisoblanadi', p.batch);
+
+  // Holat vaqtga qarab o'zgaradi
+  const { batchState } = await import('../src/routes/stock.js');
+  const at = Date.parse('2026-11-20T08:00:00Z'); const base = { stock: 5, marin_hours: 4, keep_hours: 48, last: { at: new Date(at).toISOString(), qty: 5 } };
+  ok(batchState(base, at + 3600e3).state === 'marinating' && batchState(base, at + 5 * 3600e3).state === 'ready' && batchState(base, at + 49 * 3600e3).state === 'expired', 'marinadlanmoqda → tayyor → muddati o\'tgan');
+  ok(batchState({ ...base, keep_hours: 0 }, at + 500 * 3600e3).state === 'ready' && batchState({ ...base, keep_hours: 0 }, at).expires_at === null, 'saqlash muddati yozilmasa — muddati o\'tmaydi');
+  ok(batchState({ ...base, stock: 0 }, at) === null && batchState({ ...base, last: null }, at) === null, 'omborda tayyori yo\'q yoki partiya yo\'q — holat yo\'q');
+
+  // Hujjatlar turiga ajraladi
+  let d = (await call('GET', `/api/stock/docs?from=${today()}&to=${today()}&kind=tayyorlash&prep_kind=marinovka`, null, SES)).docs;
+  ok(d.length === 1 && d[0].id === docId, 'Marinovka sahifasida faqat marinadlash hujjati', d.map((x) => x.id));
+  d = (await call('GET', `/api/stock/docs?from=${today()}&to=${today()}&kind=tayyorlash&prep_kind=zagotovka`, null, SES)).docs;
+  ok(d.length > 0 && !d.some((x) => x.id === docId), 'Zagotovkalar sahifasida marinadlash ko\'rinmaydi', d.map((x) => x.id));
+  d = (await call('GET', `/api/stock/docs?from=${today()}&to=${today()}&kind=tayyorlash`, null, SES)).docs;
+  ok(d.some((x) => x.id === docId), 'filtrsiz — hammasi', d.length);
+
+  // Tahrirlash: turi yuborilmasa o'zgarmaydi; vaqt yuborilmasa eskisi qoladi
+  r = await call('POST', '/api/stock/prep', { id: mar, name: 'Marinadlangan tovuq M', unit: 'kg', yield: 11, lines: [{ ingredient_id: tovuq, qty: 10 }, { ingredient_id: piyozM, qty: 1 }, { ingredient_id: zir, qty: 0.2 }] }, SES);
+  p = (await preps()).find((x) => x.id === mar);
+  ok(r.ok && p.kind === 'marinovka' && p.marin_hours === 4 && p.keep_hours === 48, 'turi va vaqt yuborilmasa — o\'zgarmaydi', [r.kind, p.kind, p.marin_hours, p.keep_hours]);
+  r = await call('POST', '/api/stock/prep', { id: mar, kind: 'marinovka', marin_hours: '2,5', keep_hours: -3, name: 'Marinadlangan tovuq M', unit: 'kg', yield: 11, lines: [{ ingredient_id: tovuq, qty: 10 }] }, SES);
+  p = (await preps()).find((x) => x.id === mar);
+  ok(p.marin_hours === 2.5 && p.keep_hours === 0, 'vaqt vergul bilan ham o\'qiladi, manfiysi 0 bo\'ladi', [p.marin_hours, p.keep_hours]);
+  r = await call('POST', '/api/stock/prep', { id: mar, kind: 'zagotovka', name: 'Marinadlangan tovuq M', unit: 'kg', yield: 11, lines: [{ ingredient_id: tovuq, qty: 10 }] }, SES);
+  p = (await preps()).find((x) => x.id === mar);
+  ok(p.kind === 'zagotovka' && p.marin_hours === 0 && p.keep_hours === 0, 'zagotovkaga o\'tkazilsa vaqtlar tozalanadi', p);
+  r = await call('POST', '/api/stock/prep', { id: mar, kind: 'marinovka', marin_hours: 1, name: 'Marinadlangan tovuq M', unit: 'kg', yield: 11, lines: [{ ingredient_id: tovuq, qty: 10 }] }, SES);
+  r = await call('POST', '/api/stock/prep/unset', { id: mar }, SES);
+  const back = (await call('GET', '/api/stock/ingredients', null, SES)).ingredients.find((x) => x.id === mar);
+  ok(r.ok && back.prep === false && back.prep_kind === '' && near(back.stock, 22), 'oddiy elementga qaytarilsa turi tozalanadi, qoldig\'i qoladi', back);
+}
+
 group('Restoranlar aralashmaydi');
 await call('POST', '/api/setup', { name: 'Boshqa kafe', email: 'b@t.uz', password: 'parol12345', pin: '1111' });
 const DEV2 = (await call('POST', '/api/device/login', { email: 'b@t.uz', password: 'parol12345' })).token;

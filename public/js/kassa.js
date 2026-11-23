@@ -4,7 +4,7 @@
  * smena (kassa puli, rasxod, qarz to'lovi, X/Z hisobot), eslatmalar. Kirish — PIN bilan (qulf ekrani).
  */
 import { totals, lineSum, modSum, modsText, modsKey, TYPE_NAMES, PAY_NAMES, PAY_METHODS, ROLE_NAMES, MANAGER_ROLES, shiftSummary, botStatusName } from './core.js';
-import { S, on, start, refreshBoot, dispatch, openOrders, order, shift, notes, nextNumber, stationName, tableName, hallOf, staffName, setting, flushSoon } from './store.js';
+import { S, on, start, refreshBoot, dispatch, openOrders, order, shift, notes, nextNumber, stationName, tableName, hallOf, staffName, setting, flushSoon, updateRecent } from './store.js';
 import { deviceToken, get, post } from './api.js';
 import { $, $$, esc, sum, qty, time, dateTime, since, uid, initials, icon, toast, openModal, confirmBox, numberBox, isTopModal, MARK, moneyInput, moneyVal, qtyParse } from './ui.js';
 import { pinHash, sameHex } from './pin.js';
@@ -944,11 +944,81 @@ async function viewHistory(v) {
 function showReceipt(o) {
   if (!o) return;
   const html = receiptHTML(o, ctxPrint());
+  // To'lov turi adashib urilgan bo'lsa (naqd o'rniga karta) — shu yerdan tuzatiladi. Nasiya bu yerda o'zgarmaydi.
+  const canPm = o.status === 'closed' && o.payments.some((p) => !p.void && p.method !== 'qarz');
   openModal({
     title: `Buyurtma № ${o.number ?? ''}`,
     body: `<iframe style="width:100%;height:520px;border:1px solid var(--line);border-radius:8px;background:#fff" data-f></iframe>`,
-    foot: `<button class="btn" data-x>Yopish</button><button class="btn primary" data-p>${icon('print')}Qayta chop etish</button>`,
-    onOpen: (m) => { m.querySelector('[data-f]').srcdoc = html; m.querySelector('[data-p]').onclick = () => print(html); },
+    foot: `${canPm ? `<button class="btn" data-pm>${icon('wallet')}To'lov turini o'zgartirish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Yopish</button><button class="btn primary" data-p>${icon('print')}Qayta chop etish</button>`,
+    onOpen: (m, close) => {
+      m.querySelector('[data-f]').srcdoc = html; m.querySelector('[data-p]').onclick = () => print(html);
+      m.querySelector('[data-pm]')?.addEventListener('click', async () => {
+        const doc = await changePayMethod(o); if (!doc) return;
+        close(); if (ui.view === 'tarix') renderView();
+        showReceipt(doc);
+      });
+    },
+  });
+}
+
+/**
+ * Yopilgan chekning to'lov turini tuzatish (kassir naqdni karta deb urgan bo'lsa). Summa o'zgarmaydi.
+ * Rahbar ruxsati kerak: egasi yoki menejer o'zi kirgan bo'lsa — darhol, kassir bo'lsa — menejer PIN kiritadi.
+ * Yangilangan chekni qaytaradi (bekor qilinsa — undefined).
+ */
+async function changePayMethod(o) {
+  const pays = o.payments.filter((p) => !p.void && p.method !== 'qarz');
+  if (!pays.length) return undefined;
+  const pick = await openModal({
+    title: 'To\'lov turini o\'zgartirish',
+    body: `<p class="hint" style="margin-bottom:12px">Buyurtma № ${esc(o.number ?? '')}. To'g'ri turini bosing — summa o'zgarmaydi, smena hisoboti (kassada bo'lishi kerak bo'lgan naqd) o'zi qayta hisoblanadi.</p>
+      ${pays.map((p) => `<div class="pmrow"><div><b>${sum(p.amount)}</b> <span class="dim">— hozir ${esc(PAY_NAMES[p.method] || p.method)}</span></div>
+        <div class="chips">${PAY_METHODS.filter((x) => x !== 'qarz' && x !== p.method).map((x) => `<button class="btn" type="button" data-pid="${esc(p.id)}" data-to="${x}">${esc(PAY_NAMES[x])}</button>`).join('')}</div></div>`).join('')}`,
+    foot: '<button class="btn" data-x>Bekor</button>',
+    onOpen: (m, close) => m.querySelectorAll('[data-to]').forEach((b) => b.onclick = () => close({ payment_id: b.dataset.pid, method: b.dataset.to })),
+  });
+  if (!pick) return undefined;
+  const from = pays.find((p) => p.id === pick.payment_id);
+  const token = await managerToken('Menejer ruxsati — to\'lov turini o\'zgartirish');
+  if (!token) return undefined;
+  try {
+    const r = await tokenPost('/api/order/pay-method', { order_id: o.id, ...pick }, token);
+    updateRecent(r.order);
+    toast(`To'lov turi o'zgartirildi: ${PAY_NAMES[from.method]} → ${PAY_NAMES[pick.method]}${r.shift_closed ? ' · smena hisoboti ham to\'g\'rilandi' : ''}`, 'ok');
+    return r.order;
+  } catch (e) { toast(e.message === 'Buyurtma topilmadi' ? 'Bu chek hali serverga yetib bormagan — internet tiklangach qayta urinib ko\'ring' : e.message, 'bad'); return undefined; }
+}
+
+/**
+ * Rahbar sessiyasi (server tekshiradi): egasi/menejer o'zi kirgan bo'lsa — uniki, aks holda menejer tanlanib PIN kiritiladi.
+ * `approve()` dan farqi — PIN mahalliy emas, serverda tekshiriladi va boshqaruv yo'llariga yaroqli belgi qaytadi (internet kerak).
+ */
+async function managerToken(title) {
+  if (isManager() && MGR) return MGR.t;
+  const mgrs = S.boot.staff.filter((u) => MANAGER_ROLES.includes(u.role));
+  if (!mgrs.length) { toast('Menejer yoki egasi topilmadi', 'bad'); return undefined; }
+  return openModal({
+    title, body: `<div class="row wrap" data-who style="gap:8px;margin-bottom:12px">${mgrs.map((u) => `<button class="chip" data-u="${u.id}">${esc(u.name)}</button>`).join('')}</div>
+      <input class="input" data-pin type="password" inputmode="numeric" maxlength="6" placeholder="Menejer PIN-kodi" style="font-size:22px;text-align:center;letter-spacing:.4em">`,
+    foot: `<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>Tasdiqlash</button>`,
+    onOpen: (m, close) => {
+      let who = mgrs.find((u) => u.id === S.user?.id) || (mgrs.length === 1 ? mgrs[0] : null);
+      if (who) m.querySelector(`[data-u="${who.id}"]`)?.classList.add('on');
+      m.querySelectorAll('[data-u]').forEach((b) => b.onclick = () => { who = mgrs.find((u) => u.id === Number(b.dataset.u)); m.querySelectorAll('[data-u]').forEach((x) => x.classList.toggle('on', x === b)); m.querySelector('[data-pin]').focus(); });
+      let busy = false;
+      const ok = async () => {
+        if (busy) return;
+        if (!who) { toast('Menejerni tanlang', 'bad'); return; }
+        const pin = m.querySelector('[data-pin]').value; if (!pin) return;
+        busy = true;
+        try { const r = await post('/api/pin', { user_id: who.id, pin }); close(r.token); }
+        catch (e) { toast(e.message || 'PIN tekshirilmadi', 'bad'); m.querySelector('[data-pin]').value = ''; m.querySelector('[data-pin]').focus(); }
+        finally { busy = false; }
+      };
+      m.querySelector('[data-ok]').onclick = ok;
+      m.querySelector('[data-pin]').addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); });
+      setTimeout(() => m.querySelector('[data-pin]').focus(), 50);
+    },
   });
 }
 
@@ -1113,9 +1183,13 @@ function renderNotesList() {
 // Boshqaruv yo'llari rahbar sessiyasini so'raydi: u PIN kiritilganda olinadi (MGR). Oflayn bo'lsa qo'shib bo'lmaydi.
 async function mgrPost(path, body) {
   if (!MGR) throw new Error('Internet kerak: menyu va element faqat onlayn qo\'shiladi. Aloqa bo\'lsa — qulflab, PIN bilan qayta kiring.');
+  return tokenPost(path, body, MGR.t);
+}
+/** Rahbar belgisi bilan so'rov (boshqaruv yo'llari qurilma belgisini qabul qilmaydi). */
+async function tokenPost(path, body, token) {
   let res;
-  try { res = await fetch(path, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + MGR.t }, body: JSON.stringify(body) }); }
-  catch { throw new Error(navigator.onLine === false ? 'Internet yo\'q' : 'Server javob bermadi'); }
+  try { res = await fetch(path, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: JSON.stringify(body) }); }
+  catch { throw new Error(navigator.onLine === false ? 'Internet yo\'q — bu amal faqat onlayn bajariladi' : 'Server javob bermadi'); }
   let data = {};
   try { data = await res.json(); } catch { /* */ }
   if (!res.ok || data.ok === false) throw new Error(res.status === 401 ? 'Sessiya eskirgan — qulflab, PIN bilan qayta kiring' : data.message || `Xato (${res.status})`);
