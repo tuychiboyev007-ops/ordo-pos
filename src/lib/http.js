@@ -9,7 +9,8 @@ export function fail(status, code, message) {
 }
 
 export async function body(req) {
-  try { return await req.json(); } catch { return {}; }
+  // Buzuq JSON ham, `null`/satr/son ham bo'sh obyekt: yo'llar `b.maydon` deb o'qiydi va 500 bermasligi kerak.
+  try { const v = await req.json(); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
 
 export const str = (v, max = 200) => { const s = String(v ?? '').trim(); return s ? s.slice(0, max) : null; };

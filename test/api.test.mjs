@@ -44,6 +44,12 @@ ok(r.ok, 'restoran ochildi', r);
 const C = r.company_id;
 r = await call('POST', '/api/device/login', { email: 'owner@t.uz', password: 'yomon-parol' });
 ok(r.status === 401, 'noto\'g\'ri parol rad etiladi');
+{ // tana `null` yoki buzuq JSON bo'lsa ham 500 emas
+  const rawCall = async (path, raw) => (await handle(new Request('http://t' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: raw }), env, db)).status;
+  ok(await rawCall('/api/device/login', 'null') === 401, 'tana null — 401 (500 emas)');
+  ok(await rawCall('/api/device/login', '{buzuq') === 401, 'buzuq JSON — 401 (500 emas)');
+  ok(await rawCall('/api/setup', '"matn"') === 400, 'tana satr — 400 (500 emas)');
+}
 r = await call('POST', '/api/device/login', { email: 'owner@t.uz', password: 'parol12345', device: 'Kassa' });
 ok(r.ok && r.token, 'qurilma ulandi');
 const DEV = r.token;

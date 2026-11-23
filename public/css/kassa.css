@@ -310,8 +310,10 @@ body{user-select:none}
 .splitrow > span b{font-size:16px}
 .splitrow button{height:44px;padding:0 16px;border-radius:10px;background:#fff;border:1.5px solid var(--blue);color:var(--blue);font-weight:600}
 .payhint{font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:10px}
+/* Summa hech qachon kesilmaydi ("2…" bo'lib qolardi): vaqt uzun bo'lsa ("1 soat 20 daq") o'zi pastki qatorga tushadi. */
 .tbl-card .tm{white-space:nowrap}
-.tbl-card .ft .sm{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tbl-card .ft{flex-wrap:wrap;row-gap:1px}
+.tbl-card .ft .sm{flex:none;line-height:1.15}
 
 /* ---- Qo'shimchalar (modifikatorlar) ---- */
 .tk-line .md{width:100%;color:var(--ink-2);font-size:13px;font-weight:500}

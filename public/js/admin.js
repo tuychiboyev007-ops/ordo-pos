@@ -103,6 +103,8 @@ function shell() {
   $('#nav').addEventListener('click', (e) => { if (e.target.closest('[data-page]')) side(false); });
   $('#main').addEventListener('click', (e) => { const b = e.target.closest('[data-sub]'); if (b) show(b.dataset.sub); });
   nav(); show(A.page);
+  // Manzildagi #bo'lim qo'lda o'zgartirilsa yoki "orqaga" bosilsa ham o'sha bo'lim ochilsin.
+  if (!shell.bound) { shell.bound = true; window.addEventListener('hashchange', () => { const p = location.hash.slice(1); if (sectionOf(p) && p !== A.page && $('#main')) show(p); }); }
 }
 
 function nav() {

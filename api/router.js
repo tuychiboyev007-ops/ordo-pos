@@ -25,10 +25,13 @@ export function restorePath(url) {
 
 async function readBody(req) {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
-  if (req.body != null) {
-    if (Buffer.isBuffer(req.body)) return req.body;
-    if (typeof req.body === 'string') return Buffer.from(req.body);
-    return Buffer.from(JSON.stringify(req.body));
+  // Vercel `req.body` ni birinchi o'qishda o'zi JSON qilib ochadi va buzuq JSON'da XATO TASHLAYDI —
+  // ushlanmasa butun so'rov 500 bo'lardi. Bo'sh tana qaytadi, yo'lning o'zi "noto'g'ri so'rov" deydi.
+  let b; try { b = req.body; } catch { return undefined; }
+  if (b != null) {
+    if (Buffer.isBuffer(b)) return b;
+    if (typeof b === 'string') return Buffer.from(b);
+    return Buffer.from(JSON.stringify(b));
   }
   const chunks = [];
   for await (const ch of req) chunks.push(Buffer.isBuffer(ch) ? ch : Buffer.from(ch));
