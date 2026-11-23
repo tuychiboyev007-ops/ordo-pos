@@ -31,7 +31,7 @@ const sectionOf = (page) => SECTIONS.find(([, , , pages]) => pages.some(([k]) =>
 // =================== Kirish ===================
 /** Boshqaruvga kirish — kassadagidek: xodimni bosasiz, PIN-kodni raqam tugmalari bilan terasiz, o'zi kiradi. */
 async function login() {
-  if (!deviceToken()) { location.replace('/?qurilma=1'); return; }
+  if (!deviceToken()) { location.replace('/?qurilma=1&keyin=/boshqaruv'); return; }
   let boot;
   try { boot = await get('/api/boot'); } catch (e) { $('#app').innerHTML = `<div class="empty" style="padding:80px">${esc(e.message)}</div>`; return; }
   A.boot = boot;

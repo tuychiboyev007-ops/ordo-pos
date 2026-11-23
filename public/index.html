@@ -43,7 +43,9 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
 import { post, deviceToken, setDeviceToken } from '/js/api.js';
 const q = new URLSearchParams(location.search);
 // Ofitsiant telefoni yoki oshxona ekrani ham shu yerdan ulanadi va o'z sahifasiga qaytadi.
-const next = ['/kassa', '/ofitsiant', '/oshxona'].includes(q.get('keyin')) ? q.get('keyin') : '/kassa';
+const next = ['/kassa', '/ofitsiant', '/oshxona', '/boshqaruv'].includes(q.get('keyin')) ? q.get('keyin') : '/kassa';
+// Qurilmalar ro'yxatida qaysi qurilma ekani ko'rinsin (hammasi "Kassa" bo'lib qolmasin).
+document.getElementById('dev').value = { '/kassa': 'Kassa', '/ofitsiant': 'Ofitsiant telefoni', '/oshxona': 'Oshxona ekrani', '/boshqaruv': 'Boshqaruv' }[next];
 if (deviceToken() && !q.has('qurilma')) location.replace(next);
 if (['localhost', '127.0.0.1'].includes(location.hostname)) document.getElementById('demo').hidden = false;
 document.getElementById('f').addEventListener('submit', async (e) => {
