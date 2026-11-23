@@ -1,5 +1,5 @@
 /**
- * Ombor: masalliqlar, texnologik karta, kirim / utilizatsiya / inventarizatsiya hujjatlari,
+ * Ombor: elementlar, texnologik karta, kirim / utilizatsiya / inventarizatsiya hujjatlari,
  * harakatlar, bugungi holat va moddiy hisobot.
  */
 import { unitCosts, ingCosts } from '../lib/cost.js';
@@ -43,7 +43,7 @@ export async function preps(req, env, db, auth) {
 
 /**
  * Zagotovkani saqlash: nomi, o'lchovi, chiqishi (`yield` — shu tarkibdan necha birlik chiqadi) va tarkibi.
- * `id` oddiy masalliqniki bo'lsa — u zagotovkaga aylanadi (qoldig'i va texkartalardagi o'rni saqlanadi).
+ * `id` oddiy elementniki bo'lsa — u zagotovkaga aylanadi (qoldig'i va texkartalardagi o'rni saqlanadi).
  */
 export async function savePrep(req, env, db, auth) {
   const b = await body(req); const c = auth.c; const id = int(b.id, 0);
@@ -54,24 +54,24 @@ export async function savePrep(req, env, db, auth) {
   const lines = Array.isArray(b.lines) ? b.lines.slice(0, 60) : [];
   if (!lines.length) return fail(400, 'empty', 'Tarkibini yozing — zagotovka nimadan tayyorlanadi');
   const dup = await db.first('SELECT id FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?) AND id <> ?', c, name, id);
-  if (dup) return fail(409, 'duplicate', 'Bunday nomli masalliq yoki zagotovka bor');
+  if (dup) return fail(409, 'duplicate', 'Bunday nomli element yoki zagotovka bor');
   const seen = new Set();
   for (const l of lines) {
     const iid = int(l.ingredient_id);
     if (!(q3(l.qty) > 0)) return fail(400, 'bad_qty', 'Miqdor 0 dan katta bo\'lishi kerak');
     if (iid === id) return fail(400, 'self', 'Zagotovka o\'zining tarkibida bo\'lmaydi');
-    if (seen.has(iid)) return fail(400, 'duplicate_line', 'Bir masalliq ikki marta yozilgan');
+    if (seen.has(iid)) return fail(400, 'duplicate_line', 'Bir element ikki marta yozilgan');
     seen.add(iid);
     const ing = await db.first('SELECT id, prep FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, iid);
-    if (!ing) return fail(400, 'bad_ingredient', 'Masalliq topilmadi');
-    if (ing.prep) return fail(400, 'nested', 'Zagotovka tarkibiga boshqa zagotovka qo\'yilmaydi — oddiy masalliqlarni yozing');
+    if (!ing) return fail(400, 'bad_ingredient', 'Element topilmadi');
+    if (ing.prep) return fail(400, 'nested', 'Zagotovka tarkibiga boshqa zagotovka qo\'yilmaydi — oddiy elementlarni yozing');
   }
   if (id) {
     const ex = await db.first('SELECT id, unit FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, id);
     if (!ex) return fail(404, 'not_found');
     const moved = await db.first('SELECT id FROM stock_moves WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id);
-    if (moved && ex.unit !== unit) return fail(409, 'unit_locked', 'Harakati bor masalliqning o\'lchov birligi o\'zgarmaydi');
-    if (await db.first('SELECT prep_id FROM prep_lines WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id)) return fail(400, 'nested', 'Bu masalliq boshqa zagotovka tarkibida turibdi — avval u yerdan olib tashlang');
+    if (moved && ex.unit !== unit) return fail(409, 'unit_locked', 'Harakati bor elementning o\'lchov birligi o\'zgarmaydi');
+    if (await db.first('SELECT prep_id FROM prep_lines WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id)) return fail(400, 'nested', 'Bu element boshqa zagotovka tarkibida turibdi — avval u yerdan olib tashlang');
   }
   const pid = await db.tx(async (tx) => {
     let rid = id;
@@ -84,7 +84,7 @@ export async function savePrep(req, env, db, auth) {
   return json({ ok: true, id: pid });
 }
 
-/** Zagotovkani yana oddiy masalliqqa qaytarish (tarkibi o'chadi, qoldig'i va texkartalardagi o'rni qoladi). */
+/** Zagotovkani yana oddiy elementga qaytarish (tarkibi o'chadi, qoldig'i va texkartalardagi o'rni qoladi). */
 export async function unprep(req, env, db, auth) {
   const b = await body(req); const c = auth.c; const id = int(b.id);
   const r = await db.all('UPDATE ingredients SET prep = false, yield = 1 WHERE company_id = ? AND id = ? AND prep = true RETURNING id', c, id);
@@ -99,12 +99,12 @@ export async function saveIngredient(req, env, db, auth) {
   const unit = UNITS.includes(b.unit) ? b.unit : 'kg';
   const min = Math.max(0, q3(b.min_stock)); const grp = str(b.grp, 40);
   const dup = await db.first('SELECT id FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?) AND id <> ?', c, name, id);
-  if (dup) return fail(409, 'duplicate', 'Bunday nomli masalliq bor');
+  if (dup) return fail(409, 'duplicate', 'Bunday nomli element bor');
   if (id) {
     const ex = await db.first('SELECT id, unit FROM ingredients WHERE company_id = ? AND id = ?', c, id);
     if (!ex) return fail(404, 'not_found');
     const moved = await db.first('SELECT id FROM stock_moves WHERE company_id = ? AND ingredient_id = ? LIMIT 1', c, id);
-    if (moved && ex.unit !== unit) return fail(409, 'unit_locked', 'Harakati bor masalliqning o\'lchov birligi o\'zgarmaydi');
+    if (moved && ex.unit !== unit) return fail(409, 'unit_locked', 'Harakati bor elementning o\'lchov birligi o\'zgarmaydi');
     await db.run('UPDATE ingredients SET name = ?, unit = ?, min_stock = ?, grp = ? WHERE company_id = ? AND id = ?', name, unit, min, grp, c, id);
     return json({ ok: true, id });
   }
@@ -122,7 +122,7 @@ export async function removeIngredient(req, env, db, auth) {
   return json({ ok: true });
 }
 
-/** Texnologik karta: 1 porsiya (yoki 1 kg) uchun masalliqlar. */
+/** Texnologik karta: 1 porsiya (yoki 1 kg) uchun elementlar. */
 export async function recipe(req, env, db, auth) {
   const pid = int(new URL(req.url).searchParams.get('product_id'));
   const p = await db.first('SELECT id, name, price, unit FROM products WHERE company_id = ? AND id = ?', auth.c, pid);
@@ -148,9 +148,9 @@ export async function saveRecipe(req, env, db, auth) {
   for (const l of lines) {
     const iid = int(l.ingredient_id); const q = q3(l.qty);
     if (!(q > 0)) return fail(400, 'bad_qty', 'Miqdor 0 dan katta bo\'lishi kerak');
-    if (seen.has(iid)) return fail(400, 'duplicate', 'Bir masalliq ikki marta yozilgan');
+    if (seen.has(iid)) return fail(400, 'duplicate', 'Bir element ikki marta yozilgan');
     seen.add(iid);
-    if (!(await db.first('SELECT id FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, iid))) return fail(400, 'bad_ingredient', 'Masalliq topilmadi');
+    if (!(await db.first('SELECT id FROM ingredients WHERE company_id = ? AND id = ? AND active = true', c, iid))) return fail(400, 'bad_ingredient', 'Element topilmadi');
   }
   await db.tx(async (tx) => {
     await tx.run('DELETE FROM recipes WHERE company_id = ? AND product_id = ?', c, pid);
@@ -167,7 +167,7 @@ export async function recipeCosts(req, env, db, auth) {
 
 /**
  * Hujjat: kirim (yetkazib beruvchidan), utilizatsiya (buzilgan/yaroqsiz), inventarizatsiya (sanoq).
- * Utilizatsiyada tayyor taom ham yozilsa bo'ladi — texkarta bo'yicha masalliqlari chiqadi.
+ * Utilizatsiyada tayyor taom ham yozilsa bo'ladi — texkarta bo'yicha elementlari chiqadi.
  */
 export async function saveDoc(req, env, db, auth) {
   const b = await body(req); const c = auth.c;
@@ -186,12 +186,12 @@ export async function saveDoc(req, env, db, auth) {
     if (kind === 'utilizatsiya' && l.product_id) {
       const pr = await db.first('SELECT p.id, p.name, (SELECT COUNT(*)::int FROM recipes r WHERE r.company_id = p.company_id AND r.product_id = p.id) AS lines FROM products p WHERE p.company_id = ? AND p.id = ?', c, int(l.product_id));
       if (!pr) return fail(400, 'bad_product', 'Taom topilmadi');
-      if (!pr.lines) return fail(400, 'no_recipe', `${pr.name} — texnologik kartasi yo'q. Utilizatsiyani masalliq bo'yicha kiriting (masalan, Cola — 1 dona).`);
+      if (!pr.lines) return fail(400, 'no_recipe', `${pr.name} — texnologik kartasi yo'q. Utilizatsiyani element bo'yicha kiriting (masalan, Cola — 1 dona).`);
       if (!(q3(l.qty) > 0)) return fail(400, 'bad_qty', 'Miqdor noto\'g\'ri');
       continue;
     }
     const ing = await db.first('SELECT id, name, prep, (SELECT COUNT(*)::int FROM prep_lines pl WHERE pl.company_id = i.company_id AND pl.prep_id = i.id) AS comp FROM ingredients i WHERE i.company_id = ? AND i.id = ? AND i.active = true', c, int(l.ingredient_id));
-    if (!ing) return fail(400, 'bad_ingredient', 'Masalliq topilmadi');
+    if (!ing) return fail(400, 'bad_ingredient', 'Element topilmadi');
     l.prep = !!ing.prep && ing.comp > 0;
     if (kind === 'tayyorlash' && !l.prep) return fail(400, 'not_prep', `${ing.name} — zagotovka emas yoki tarkibi yozilmagan`);
     if (kind === 'inventar' ? !(q3(l.qty) >= 0) : !(q3(l.qty) > 0)) return fail(400, 'bad_qty', 'Miqdor noto\'g\'ri');
@@ -207,7 +207,7 @@ export async function saveDoc(req, env, db, auth) {
     const doc = await tx.first(`INSERT INTO stock_docs (company_id, kind, supplier_id, reason, note, pay_from, user_id, at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, c, kind, supplier?.id || null, reason, str(b.note, 300), payFrom, auth.u || null, at);
     let total = 0;
-    // Zagotovkalar oddiy masalliqlardan oldin, keyin raqam tartibida — sotuv bilan bir xil qulf tartibi.
+    // Zagotovkalar oddiy elementlardan oldin, keyin raqam tartibida — sotuv bilan bir xil qulf tartibi.
     lines.sort((a, b) => (a.prep ? 0 : 1) - (b.prep ? 0 : 1) || int(a.ingredient_id, 0) - int(b.ingredient_id, 0));
     for (const l of lines) {
       if (kind === 'tayyorlash') {
@@ -221,7 +221,7 @@ export async function saveDoc(req, env, db, auth) {
         if (l.product_id) {
           await consume(tx, c, [{ product_id: int(l.product_id), qty: q3(l.qty) }], { kind, doc_id: doc.id, user_id: auth.u, at });
         } else if (l.prep) {
-          // Tayyori bo'lsa o'shandan, yetmagani tarkibidagi masalliqlardan (sotuvdagi kabi)
+          // Tayyori bo'lsa o'shandan, yetmagani tarkibidagi elementlardan (sotuvdagi kabi)
           await applyNeeds(tx, c, new Map([[`0:${int(l.ingredient_id)}`, q3(l.qty)]]), { kind, doc_id: doc.id, user_id: auth.u, at });
         } else {
           const r = await moveStock(tx, c, { ingredient_id: int(l.ingredient_id), kind, qty: -q3(l.qty), doc_id: doc.id, user_id: auth.u, at });
@@ -320,7 +320,7 @@ export async function moves(req, env, db, auth) {
 }
 
 /**
- * Moddiy hisobot: har masalliq bo'yicha davr boshidagi qoldiq + kirim − sarf (sotuv) − utilizatsiya ± inventarizatsiya = davr oxiri.
+ * Moddiy hisobot: har element bo'yicha davr boshidagi qoldiq + kirim − sarf (sotuv) − utilizatsiya ± inventarizatsiya = davr oxiri.
  * Boshi va oxiri — davr chegarasidan oldingi oxirgi harakatdagi qoldiq va o'rtacha narx;
  * summalar shu narxlarda, shuning uchun har qator aniq balanslanadi.
  */
@@ -350,7 +350,7 @@ export async function material(req, env, db, auth) {
     const s0 = start[i.id] || { q: 0, v: 0 }; const s1 = end[i.id] || { q: 0, v: 0 };
     if (!i.active && !Object.keys(m).length && !s1.q) continue;
     const g = (k) => m[k] || { q: 0, v: 0 };
-    // «Tayyorlash»: zagotovkaga — kirim, tarkibidagi masalliqqa — sarf (zagotovkaga ketdi).
+    // «Tayyorlash»: zagotovkaga — kirim, tarkibidagi elementga — sarf (zagotovkaga ketdi).
     const made = g('tayyorlash');
     const kirim = { q: g('kirim').q + Math.max(0, made.q), v: g('kirim').v + Math.max(0, made.v) };
     const sotuv = { q: g('sotuv').q + Math.min(0, made.q), v: g('sotuv').v + Math.min(0, made.v) };

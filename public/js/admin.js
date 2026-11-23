@@ -21,8 +21,8 @@ const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
   ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['analytics', 'Analitika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
-  ['stock', 'box', 'Ombor', [['stock', 'Masalliqlar'], ['preps', 'Zagotovkalar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
-  ['menu', 'list', 'Menyu', [['menu', 'Taomlar va tovarlar'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
+  ['stock', 'box', 'Ombor', [['stock', 'Elementlar'], ['preps', 'Zagotovkalar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
+  ['menu', 'list', 'Menyu', [['menu', 'Menyu'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
   ['money', 'wallet', 'Pul', [['expenses', 'Rasxod'], ['debts', 'Nasiya'], ['suppliers', 'Yetkazib beruvchilar']]],
   ['set', 'gear', 'Sozlamalar', [['settings', 'Restoran, bot, parol'], ['staff', 'Xodimlar'], ['halls', 'Zal va stollar']]],
 ];
@@ -193,7 +193,7 @@ PAGES.profit = async (m) => {
       <td class="r">${x.no_cost ? '<span class="dim">—</span>' : `<b class="${x.profit < 0 ? 'neg' : ''}">${sum(x.profit)}</b>`}</td><td class="r">${x.revenue && !x.no_cost ? `<span class="badge ${mpct(x.profit, x.revenue) < 30 ? 'warn' : 'ok'}">${mpct(x.profit, x.revenue)}%</span>` : ''}</td></tr>`).join('') || '<tr><td colspan="7"><div class="empty">Bu davrda savdo yo\'q</div></td></tr>'}
     ${d.items.length ? `<tr class="tot"><td>Jami</td><td></td><td class="r">${sum(t.items_revenue)}</td><td></td><td class="r">${sum(t.cost)}</td><td class="r">${sum(t.items_revenue - t.cost)}</td><td></td></tr>` : ''}
     </tbody></table></div></div>
-    <p class="hint mt">Taom foydasi chegirmagacha hisoblanadi; umumiy foydada chegirma ayirilgan. Tannarx — sotilgan paytdagi: texkarta bo'lsa masalliqlarning kirim narxidan, bo'lmasa qo'lda yozilganidan.</p>`;
+    <p class="hint mt">Taom foydasi chegirmagacha hisoblanadi; umumiy foydada chegirma ayirilgan. Tannarx — sotilgan paytdagi: texkarta bo'lsa elementlarning kirim narxidan, bo'lmasa qo'lda yozilganidan.</p>`;
   $('#xl').onclick = () => csv(`foyda_${A.range.from}_${A.range.to}`, ['Taom', 'Sotildi', 'Tushum', '1 dona tannarxi', 'Jami tannarx', 'Foyda'],
     d.items.map((x) => [x.name, x.qty, x.revenue, x.unit_cost, x.cost, x.profit]));
 };
@@ -202,15 +202,15 @@ PAGES.dash = async (m) => {
   const day = A.dashDay || today();
   const d = await S('/api/dashboard?day=' + day);
   const s = d.sales;
-  // Tannarxi noma'lum taomlar (masalliq kirim qilinmagan yoki tannarx yozilmagan) — foyda ko'p ko'rinadi.
+  // Tannarxi noma'lum taomlar (element kirim qilinmagan yoki tannarx yozilmagan) — foyda ko'p ko'rinadi.
   const pf = await S(`/api/reports/profit?from=${day}&to=${day}`).catch(() => null);
   const nc = (pf?.items || []).filter((i) => i.no_cost);
   const hours = Array.from({ length: 24 }, (_, h) => ({ h: String(h).padStart(2, '0'), sum: d.hours.find((x) => x.h === h)?.sum || 0 })).filter((x, i, a) => x.sum || (i >= 9 && i <= 23));
   m.innerHTML = head('Bosh sahifa', date(day + 'T12:00:00Z'), `<div class="seg"><button data-d="${today()}" class="${day === today() ? 'on' : ''}">Bugun</button><button data-d="${dayShift(today(), -1)}" class="${day === dayShift(today(), -1) ? 'on' : ''}">Kecha</button></div>`)
     + (nc.length ? `<div class="card" style="border-color:#f0cf86;background:#fffbf1;padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <span>${icon('alert')} <b>${nc.length} ta sotilgan taomning tannarxi noma'lum</b> (${esc(nc.slice(0, 4).map((i) => i.name).join(', '))}${nc.length > 4 ? '…' : ''}) — foyda haqiqiydan ko'p ko'rinyapti. Masalliqlar kirim qilinsa yoki tannarx yozilsa, to'g'ri bo'ladi.</span>
+        <span>${icon('alert')} <b>${nc.length} ta sotilgan taomning tannarxi noma'lum</b> (${esc(nc.slice(0, 4).map((i) => i.name).join(', '))}${nc.length > 4 ? '…' : ''}) — foyda haqiqiydan ko'p ko'rinyapti. Elementlar kirim qilinsa yoki tannarx yozilsa, to'g'ri bo'ladi.</span>
         <span class="grow"></span><button class="btn sm" data-go="docs">${icon('truckin')}Kirim qilish</button><button class="btn sm" data-go="menu">Taomlar</button></div>` : '')
-    + `<div class="quick noprint"><button class="btn sm" data-go="menu">${icon('plus')}Menyuga taom yoki tovar</button><button class="btn sm" data-go="stock">${icon('plus')}Masalliq</button><button class="btn sm" data-go="docs">${icon('truckin')}Kirim</button><button class="btn sm" data-go="preps">${icon('flame')}Zagotovka</button><button class="btn sm" data-go="analytics">${icon('chart')}Analitika</button></div>
+    + `<div class="quick noprint"><button class="btn sm" data-go="menu">${icon('plus')}Menyuga taom yoki tovar</button><button class="btn sm" data-go="stock">${icon('plus')}Element</button><button class="btn sm" data-go="docs">${icon('truckin')}Kirim</button><button class="btn sm" data-go="preps">${icon('flame')}Zagotovka</button><button class="btn sm" data-go="analytics">${icon('chart')}Analitika</button></div>
     <div class="stats">${stat('Savdo', sum(s.total), `${s.orders} ta buyurtma`, 'accent')}${stat('O\'rtacha chek', sum(s.avg), `${s.guests} mehmon`)}
       ${stat('Tannarx (texkarta)', sum(d.food_cost), s.total ? `savdoning ${pct(d.food_cost, s.total)}%` : '')}${stat('Rasxod', sum(d.expenses))}
       ${stat('Utilizatsiya', sum(d.waste))}${stat('Taxminiy foyda', `<span class="${d.profit < 0 ? 'neg' : ''}">${sum(d.profit)}</span>`, nc.length ? 'tannarxi noma\'lum taomlar hisobga olinmagan' : 'savdo − tannarx − rasxod − utilizatsiya')}</div>
@@ -222,7 +222,7 @@ PAGES.dash = async (m) => {
         <div class="hbar"><div class="t"><span>Bekor qilingan taomlar (oshxonaga ketgandan keyin)</span><b class="${d.cancels.n ? 'neg' : ''}">${d.cancels.n} ta · ${sum(d.cancels.v)}</b></div></div>
         <div class="hbar"><div class="t"><span>Mijozlar qarzi (nasiya)</span><b>${d.debts.n} ta · ${sum(d.debts.v)}</b></div></div>
         <div class="hbar"><div class="t"><span>Yetkazib beruvchilarga qarzimiz</span><b>${sum(d.supplier_debt)}</b></div></div>
-        <div class="lbl" style="margin:14px 0 6px">Kam qolgan masalliqlar</div>
+        <div class="lbl" style="margin:14px 0 6px">Kam qolgan elementlar</div>
         ${d.low.length ? `<table class="tbl">${d.low.map((l) => `<tr><td>${esc(l.name)}</td><td class="r ${l.stock < 0 ? 'neg' : ''}">${qty(l.stock, l.unit)}</td><td class="r dim">min ${qty(l.min_stock, l.unit)}</td></tr>`).join('')}</table>` : '<p class="hint">Hammasi yetarli</p>'}
       </div></div></div>`;
   $$('[data-d]', m).forEach((b) => b.onclick = () => { A.dashDay = b.dataset.d; show('dash'); });
@@ -393,21 +393,21 @@ PAGES.material = async (m) => {
       ${stat('Utilizatsiya', sum(mo.waste), 'yaroqsiz bo\'lib chiqarilgan')}
       ${stat('Xodimlar oldi', sum(mo.staff), mo.expenses - mo.staff ? `ish haqi · boshqa rasxod ${sum(mo.expenses - mo.staff)}` : 'ish haqi (rasxoddan)')}
       ${stat('Kassada bor', mo.cash === null ? '<span class="dim">—</span>' : sum(mo.cash), mo.cash === null ? 'smena yopiq' : `hozir, naqd · Smena №${mo.shift_number ?? ''}`)}</div>
-    <div class="sec-t mt">Ombor (masalliqlar)</div>` : '')
+    <div class="sec-t mt">Ombor (elementlar)</div>` : '')
     + `<div class="stats${mo ? '' : ' mt'}">${stat('Davr boshida', sum(t.open_v))}${stat('Kirim', sum(t.in_v), '', 'accent')}${stat('Sarf (taomlarga)', sum(t.used_v))}${stat('Utilizatsiya', sum(t.waste_v))}${stat('Davr oxirida', sum(t.close_v))}</div>
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead>
-      <tr><th rowspan="2">Masalliq</th><th colspan="2" class="c">Davr boshida</th><th colspan="2" class="c">Kirim</th><th colspan="2" class="c">Sarf (sotuv)</th><th colspan="2" class="c">Utilizatsiya</th><th colspan="2" class="c">Inventar / farq</th><th colspan="2" class="c">Davr oxirida</th></tr>
+      <tr><th rowspan="2">Element</th><th colspan="2" class="c">Davr boshida</th><th colspan="2" class="c">Kirim</th><th colspan="2" class="c">Sarf (sotuv)</th><th colspan="2" class="c">Utilizatsiya</th><th colspan="2" class="c">Inventar / farq</th><th colspan="2" class="c">Davr oxirida</th></tr>
       <tr>${'<th class="r">Miqdor</th><th class="r">Summa</th>'.repeat(6)}</tr></thead><tbody>
       ${[...groups].map(([g, rows]) => `<tr class="grp"><td colspan="13">${esc(g)}</td></tr>${rows.map((r) => `<tr class="click" data-ing="${r.id}"><td>${esc(r.name)} ${r.low ? '<span class="badge warn">kam</span>' : ''}</td>
         ${cell(r.open_q, r.open_v, r.unit)}${cell(r.in_q, r.in_v, r.unit)}${cell(r.used_q, r.used_v, r.unit)}${cell(r.waste_q, r.waste_v, r.unit)}${cell(r.inv_q, r.inv_v, r.unit, r.inv_q < 0 ? 'neg' : '')}${cell(r.close_q, r.close_v, r.unit, r.close_q < 0 ? 'neg' : '')}</tr>`).join('')}`).join('')}
       <tr class="total"><td>JAMI</td><td></td><td class="r">${sum(t.open_v)}</td><td></td><td class="r">${sum(t.in_v)}</td><td></td><td class="r">${sum(t.used_v)}</td><td></td><td class="r">${sum(t.waste_v)}</td><td></td><td class="r">${sum(t.inv_v)}</td><td></td><td class="r">${sum(t.close_v)}</td></tr>
       </tbody></table></div></div>
-    <div class="card mt"><div class="card-h"><h3>Masalliq qaysi taomga ketdi</h3><span class="hint">texnologik karta bo'yicha avtomatik ayirilgan</span></div><div class="tbl-wrap" style="max-height:480px">
-      ${d.dishes.length ? `<table class="tbl"><thead><tr><th>Taom</th><th>Masalliq</th><th class="r">Miqdor</th><th class="r">Tannarx</th></tr></thead><tbody>
+    <div class="card mt"><div class="card-h"><h3>Element qaysi taomga ketdi</h3><span class="hint">texnologik karta bo'yicha avtomatik ayirilgan</span></div><div class="tbl-wrap" style="max-height:480px">
+      ${d.dishes.length ? `<table class="tbl"><thead><tr><th>Taom</th><th>Element</th><th class="r">Miqdor</th><th class="r">Tannarx</th></tr></thead><tbody>
       ${d.dishes.map((x) => `<tr><td>${esc(x.product || '—')}</td><td>${esc(x.ingredient)}</td><td class="r">${qty(x.q, x.unit)}</td><td class="r">${sum(x.v)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Bu davrda texkarta bo\'yicha sarf yo\'q</div>'}</div></div>`;
   $$('[data-ing]', m).forEach((r) => r.onclick = () => movesModal(Number(r.dataset.ing), d.rows.find((x) => x.id === Number(r.dataset.ing))?.name));
   $('#xl').onclick = () => csv(`moddiy_hisobot_${A.range.from}_${A.range.to}`,
-    ['Guruh', 'Masalliq', 'Birlik', 'Boshida miqdor', 'Boshida summa', 'Kirim miqdor', 'Kirim summa', 'Sarf miqdor', 'Sarf summa', 'Utilizatsiya miqdor', 'Utilizatsiya summa', 'Farq miqdor', 'Farq summa', 'Oxirida miqdor', 'Oxirida summa'],
+    ['Guruh', 'Element', 'Birlik', 'Boshida miqdor', 'Boshida summa', 'Kirim miqdor', 'Kirim summa', 'Sarf miqdor', 'Sarf summa', 'Utilizatsiya miqdor', 'Utilizatsiya summa', 'Farq miqdor', 'Farq summa', 'Oxirida miqdor', 'Oxirida summa'],
     [...d.rows.map((r) => [r.grp || '', r.name, r.unit, ...[r.open_q, r.open_v, r.in_q, r.in_v, r.used_q, r.used_v, r.waste_q, r.waste_v, r.inv_q, r.inv_v, r.close_q, r.close_v].map((v) => String(v).replace('.', ','))]),
       ...(mo ? [[], ['PUL XULOSASI'], ['', 'Savdo', '', mo.revenue], ['', 'Tannarx', '', mo.cost], ['', 'Rasxod (jami)', '', mo.expenses], ['', 'shundan xodimlar oldi (ish haqi)', '', mo.staff],
         ['', 'Utilizatsiya', '', mo.waste], ['', 'Sof foyda', '', mo.net], ['', 'Kassada bor (hozir, naqd)', '', mo.cash === null ? 'smena yopiq' : mo.cash]] : [])]);
@@ -417,7 +417,7 @@ async function movesModal(id, name, unit) {
   const from = dayShift(today(), -30);
   const d = await S(`/api/stock/moves?ingredient_id=${id}&from=${from}&to=${today()}`);
   openModal({
-    title: `${name || 'Masalliq'} — harakatlar (30 kun)`, size: 'xl',
+    title: `${name || 'Element'} — harakatlar (30 kun)`, size: 'xl',
     body: d.moves.length ? `<div class="tbl-wrap" style="max-height:60vh"><table class="tbl"><thead><tr><th>Vaqt</th><th>Turi</th><th>Nima</th><th class="r">Miqdor</th><th class="r">Narx</th><th class="r">Qoldiq</th><th>Kim</th></tr></thead><tbody>
       ${d.moves.map((x) => `<tr><td>${dateTime(x.at)}</td><td>${esc({ kirim: 'Kirim', sotuv: 'Sotuv', utilizatsiya: 'Utilizatsiya', inventar: 'Inventarizatsiya', bekor: 'Bekor qilindi', tayyorlash: x.qty > 0 ? 'Tayyorlandi' : 'Zagotovkaga ketdi' }[x.kind] || x.kind)}</td>
       <td>${x.product ? esc(x.product) : ''}${x.number ? ` <span class="dim">№${esc(x.number)}</span>` : ''}${x.doc_id ? ` <span class="dim">hujjat #${x.doc_id}</span>` : ''}${x.note ? ` <span class="dim">${esc(x.note)}</span>` : ''}</td>
@@ -433,15 +433,15 @@ PAGES.stock = async (m) => {
   const total = d.ingredients.reduce((s, i) => s + Math.max(0, i.value), 0);
   const low = d.ingredients.filter((i) => i.low).length;
   const neg = d.ingredients.filter((i) => i.stock < 0).length;
-  m.innerHTML = head('Ombor qoldig\'i', 'Masalliqlar — kirim bilan ko\'payadi, taom sotilganda texkarta bo\'yicha kamayadi',
-    `<button class="btn" data-doc="kirim">${icon('truckin')}Kirim</button><button class="btn" data-doc="utilizatsiya">${icon('trash')}Utilizatsiya</button><button class="btn" data-doc="inventar">${icon('check')}Inventarizatsiya</button><button class="btn primary" id="add">${icon('plus')}Masalliq</button>`)
-    + `<div class="stats">${stat('Ombor qiymati (tannarxda)', sum(total), `${d.ingredients.length} ta masalliq`, 'accent')}${stat('Kam qolgan', low, 'eng kam qoldiqdan past')}${stat('Manfiy qoldiq', `<span class="${neg ? 'neg' : ''}">${neg}</span>`, 'kirim kiritilmagan')}</div>
+  m.innerHTML = head('Ombor qoldig\'i', 'Elementlar — kirim bilan ko\'payadi, taom sotilganda texkarta bo\'yicha kamayadi',
+    `<button class="btn" data-doc="kirim">${icon('truckin')}Kirim</button><button class="btn" data-doc="utilizatsiya">${icon('trash')}Utilizatsiya</button><button class="btn" data-doc="inventar">${icon('check')}Inventarizatsiya</button><button class="btn primary" id="add">${icon('plus')}Element</button>`)
+    + `<div class="stats">${stat('Ombor qiymati (tannarxda)', sum(total), `${d.ingredients.length} ta element`, 'accent')}${stat('Kam qolgan', low, 'eng kam qoldiqdan past')}${stat('Manfiy qoldiq', `<span class="${neg ? 'neg' : ''}">${neg}</span>`, 'kirim kiritilmagan')}</div>
     <div class="card mt"><div class="card-h"><input class="input" id="q" placeholder="Qidirish: nomi yoki guruhi" value="${esc(A.stockQ || '')}" style="max-width:340px"><span class="grow"></span></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Masalliq</th><th>Guruh</th><th class="r">Qoldiq</th><th class="r">Eng kam</th><th class="r">1 birlik narxi</th><th class="r">Qiymati</th><th class="r">Taomlarda</th><th></th></tr></thead><tbody>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Element</th><th>Guruh</th><th class="r">Qoldiq</th><th class="r">Eng kam</th><th class="r">1 birlik narxi</th><th class="r">Qiymati</th><th class="r">Taomlarda</th><th></th></tr></thead><tbody>
     ${rows.map((i) => `<tr class="click" data-i="${i.id}"><td><b>${esc(i.name)}</b>${i.prep ? ' <span class="badge">zagotovka</span>' : ''}</td><td class="dim">${esc(i.grp || '')}</td>
       <td class="r ${i.stock < 0 ? 'neg' : ''}"><b>${qty(i.stock, i.unit)}</b> ${i.low ? '<span class="badge warn">kam</span>' : ''}</td><td class="r dim">${qty(i.min_stock, i.unit)}</td>
       <td class="r">${sum(i.cost)} <span class="dim">/ ${UNIT[i.unit]}</span></td><td class="r">${sum(i.value)}</td><td class="r dim">${i.dishes || '—'}</td>
-      <td class="r"><button class="btn sm ghost" data-edit="${i.id}">${icon('edit')}</button></td></tr>`).join('') || '<tr><td colspan="8"><div class="empty">Masalliq yo\'q — "+ Masalliq" bilan qo\'shing</div></td></tr>'}
+      <td class="r"><button class="btn sm ghost" data-edit="${i.id}">${icon('edit')}</button></td></tr>`).join('') || '<tr><td colspan="8"><div class="empty">Element yo\'q — "+ Element" bilan qo\'shing</div></td></tr>'}
     </tbody></table></div></div>`;
   $('#q').oninput = (e) => { A.stockQ = e.target.value; clearTimeout(A.qt); A.qt = setTimeout(() => show('stock').then(() => { const i = $('#q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
   $('#add').onclick = () => ingredientForm();
@@ -463,13 +463,13 @@ const guessUnit = (name) => {
 };
 const unitChips = (cur) => `<div class="uchips">${Object.entries(UNIT).map(([k, v]) => `<button type="button" class="uchip ${cur === k ? 'on' : ''}" data-uv="${k}"><b>${v}</b><small>${UNIT_HELP[k]}</small></button>`).join('')}</div>`;
 
-/** Masalliq qo'shish — nomi va o'lchovi; xohlasa shu yerning o'zida hozir bori va narxi (kirim o'zi yoziladi). */
+/** Element qo'shish — nomi va o'lchovi; xohlasa shu yerning o'zida hozir bori va narxi (kirim o'zi yoziladi). */
 async function ingredientForm(ing = null) {
   const all = (await S('/api/stock/ingredients')).ingredients;
   const groups = [...new Set(all.map((i) => i.grp).filter(Boolean))];
   let unit = ing?.unit || 'kg'; let touched = !!ing;
   return openModal({
-    title: ing ? 'Masalliqni tahrirlash' : 'Yangi masalliq',
+    title: ing ? 'Elementni tahrirlash' : 'Yangi element',
     body: `<div class="field"><label>Nomi</label><input class="input" data-n value="${esc(ing?.name || '')}" placeholder="masalan: Mol go'shti, Pishloq, Bulochka" autofocus></div>
       <div class="field"><label>Qanday o'lchanadi?</label>${unitChips(unit)}</div>
       ${ing ? '' : `<div class="startbox"><div class="lbl" style="margin-bottom:8px">Hozir omborda bormi? <span class="dim" style="font-weight:400">— bo'lsa yozing, kirim o'zi yoziladi</span></div>
@@ -479,7 +479,7 @@ async function ingredientForm(ing = null) {
       <details class="more" ${ing && (ing.grp || ing.min_stock) ? 'open' : ''}><summary>Qo'shimcha: guruh va eng kam qoldiq</summary>
         <div class="grid2" style="margin-top:10px"><div class="field"><label>Guruh</label><input class="input" data-g list="grps" value="${esc(ing?.grp || '')}" placeholder="Go'sht, Sabzavot…"><datalist id="grps">${groups.map((g) => `<option value="${esc(g)}">`).join('')}</datalist></div>
         <div class="field"><label>Eng kam qoldiq (kam qolsa ogohlantiradi)</label><div class="unitbox"><input class="input" data-m inputmode="decimal" value="${ing?.min_stock ? String(ing.min_stock).replace('.', ',') : ''}" placeholder="masalan 2"><span data-mu>${UNIT[unit]}</span></div></div></div></details>`,
-    foot: `${ing ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><button class="btn ghost" data-toprep title="Bu masalliq o'zi boshqa masalliqlardan tayyorlanadi (kotlet, sous…)">Zagotovka qilish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button>${ing ? '' : '<button class="btn" data-again>Saqlash va yana qo\'shish</button>'}<button class="btn primary" data-ok>Saqlash</button>`,
+    foot: `${ing ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><button class="btn ghost" data-toprep title="Bu element o'zi boshqa elementlardan tayyorlanadi (kotlet, sous…)">Zagotovka qilish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button>${ing ? '' : '<button class="btn" data-again>Saqlash va yana qo\'shish</button>'}<button class="btn primary" data-ok>Saqlash</button>`,
     onOpen: (mm, close) => {
       const nameI = mm.querySelector('[data-n]');
       const setUnit = (u) => { unit = u; $$('.uchip', mm).forEach((b) => b.classList.toggle('on', b.dataset.uv === u)); const su = mm.querySelector('[data-su]'); if (su) su.textContent = UNIT[u]; mm.querySelector('[data-mu]').textContent = UNIT[u]; hint(); };
@@ -519,8 +519,8 @@ async function ingredientForm(ing = null) {
   }).then((res) => { if (res || A.ingDirty) { A.ingDirty = false; show(A.page); } });
 }
 
-/** Masalliq tanlash maydoni (qidiruv bilan). */
-function picker(list, value, placeholder = 'Masalliq tanlang') {
+/** Element tanlash maydoni (qidiruv bilan). */
+function picker(list, value, placeholder = 'Element tanlang') {
   return `<div class="picker" data-pk><input class="input" data-pkq placeholder="${esc(placeholder)}" value="${esc(list.find((x) => x.id === value)?.name || '')}" data-id="${value || ''}" autocomplete="off"><div class="list" hidden></div></div>`;
 }
 function bindPickers(root, list, onPick, create = null) {
@@ -533,7 +533,7 @@ function bindPickers(root, list, onPick, create = null) {
       const res = list.filter((x) => !q || x.name.toLowerCase().includes(q)).slice(0, 40);
       const exact = list.some((x) => x.name.toLowerCase() === q);
       box.innerHTML = res.map((x) => `<button type="button" data-v="${x.id}"><span>${esc(x.name)}</span><span class="dim">${esc(x.hint || '')}</span></button>`).join('')
-        + (create && raw && !exact ? `<button type="button" class="newi" data-new>${icon('plus')}<span>«${esc(raw)}» — yangi masalliq qo'shish</span></button>` : '')
+        + (create && raw && !exact ? `<button type="button" class="newi" data-new>${icon('plus')}<span>«${esc(raw)}» — yangi element qo'shish</span></button>` : '')
         + (!res.length && !(create && raw) ? '<div class="hint" style="padding:10px">Topilmadi</div>' : '');
       box.hidden = false;
       box.querySelectorAll('[data-v]').forEach((b) => b.onmousedown = (e) => { e.preventDefault(); pick(list.find((y) => y.id === Number(b.dataset.v))); });
@@ -543,7 +543,7 @@ function bindPickers(root, list, onPick, create = null) {
         box.innerHTML = `<div class="newu"><div>«${esc(raw)}» qanday o'lchanadi?</div><div class="row" style="gap:6px;margin-top:8px">${Object.entries(UNIT).map(([k, v]) => `<button type="button" class="chip ${k === g ? 'on' : ''}" data-nu="${k}">${v}</button>`).join('')}</div><div class="hint" style="margin-top:6px">kg — go'sht, sabzavot · litr — yog', sut · dona — bulochka, tuxum</div></div>`;
         box.querySelectorAll('[data-nu]').forEach((b) => b.onmousedown = async (ev) => {
           ev.preventDefault();
-          try { const x = await create(raw, b.dataset.nu); list.push(x); pick(x); toast(`${x.name} masalliqlarga qo'shildi`, 'ok'); }
+          try { const x = await create(raw, b.dataset.nu); list.push(x); pick(x); toast(`${x.name} elementlarga qo'shildi`, 'ok'); }
           catch (er) { fail(er); }
         });
       });
@@ -552,7 +552,7 @@ function bindPickers(root, list, onPick, create = null) {
     inp.addEventListener('blur', () => setTimeout(() => { box.hidden = true; }, 150));
   });
 }
-/** Tanlash maydonidan yangi masalliq yaratish (kirim va texkarta uchun). */
+/** Tanlash maydonidan yangi element yaratish (kirim va texkarta uchun). */
 const createIngredient = async (name, unit) => {
   const r = await P('/api/stock/ingredient', { name, unit });
   return { id: r.id, name, unit, cost: 0, stock: 0, hint: `0 · ${UNIT[unit]}` };
@@ -567,17 +567,17 @@ async function docForm(kind) {
   const titles = { kirim: 'Kirim — omborga mahsulot keldi', utilizatsiya: 'Utilizatsiya — yaroqsiz mahsulotni hisobdan chiqarish', inventar: 'Inventarizatsiya — ombordagi haqiqiy qoldiqni sanash' };
   const lineRow = () => kind === 'kirim'
     ? `<div class="ln" data-ln>${picker(list)}<div class="unitbox"><input class="input" data-q inputmode="decimal" placeholder="masalan 10"><span data-u></span></div><input class="input money" data-p inputmode="numeric" placeholder="1 birlik narxi"><input class="input money" data-t inputmode="numeric" placeholder="yoki jami summa"><button class="icon-btn" data-rm type="button">${icon('x')}</button></div>`
-    : `<div class="ln" data-ln>${picker([...list, ...prods.map((p) => ({ id: -p.id, name: p.name + ' (tayyor taom)', hint: 'texkarta bo\'yicha' }))], null, 'Masalliq yoki tayyor taom')}<div class="unitbox"><input class="input" data-q inputmode="decimal" placeholder="Miqdor"><span data-u></span></div><span class="sum" data-s></span><button class="icon-btn" data-rm type="button">${icon('x')}</button></div>`;
+    : `<div class="ln" data-ln>${picker([...list, ...prods.map((p) => ({ id: -p.id, name: p.name + ' (tayyor taom)', hint: 'texkarta bo\'yicha' }))], null, 'Element yoki tayyor taom')}<div class="unitbox"><input class="input" data-q inputmode="decimal" placeholder="Miqdor"><span data-u></span></div><span class="sum" data-s></span><button class="icon-btn" data-rm type="button">${icon('x')}</button></div>`;
   const body = kind === 'inventar'
-    ? `<p class="hint" style="margin-bottom:12px">Faqat sanalgan masalliqlarga haqiqiy miqdorni yozing — bo'sh qoldirilganlari o'zgarmaydi. Farq hisobotda "Inventar / farq" ustunida chiqadi.</p>
+    ? `<p class="hint" style="margin-bottom:12px">Faqat sanalgan elementlarga haqiqiy miqdorni yozing — bo'sh qoldirilganlari o'zgarmaydi. Farq hisobotda "Inventar / farq" ustunida chiqadi.</p>
       <input class="input" data-iq placeholder="Qidirish" style="margin-bottom:10px">
-      <div class="lines inv" style="max-height:50vh;overflow:auto"><div class="ln h"><span>Masalliq</span><span class="r">Tizimda</span><span>Haqiqiy (sanaldi)</span><span class="r">Farq</span></div>
+      <div class="lines inv" style="max-height:50vh;overflow:auto"><div class="ln h"><span>Element</span><span class="r">Tizimda</span><span>Haqiqiy (sanaldi)</span><span class="r">Farq</span></div>
       ${list.map((i) => `<div class="ln" data-inv="${i.id}"><span>${esc(i.name)}</span><span class="r dim">${qty(i.stock, i.unit)}</span><div class="unitbox"><input class="input" data-q inputmode="decimal"><span>${UNIT[i.unit]}</span></div><span class="sum" data-s></span></div>`).join('')}</div>`
     : `${kind === 'kirim' ? `<div class="grid3"><div class="field"><label>Yetkazib beruvchi</label><select class="input" data-sup><option value="">— tanlanmagan —</option>${sups.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Sana</label><input class="input" type="date" data-at value="${today()}" max="${today()}"></div><div class="field"><label>Izoh</label><input class="input" data-note placeholder="nakladnoy raqami…"></div></div>`
       : `<div class="field"><label>Sababi</label><div class="chips" data-r>${['Muddati o\'tdi', 'Buzildi', 'Tushib ketdi', 'Kuyib qoldi', 'Mijoz qaytardi'].map((x) => `<button type="button" class="chip" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>
         <input class="input" data-rt placeholder="yoki o'zingiz yozing" style="margin-top:8px"></div>`}
-      <div class="lines ${kind === 'kirim' ? '' : 'rec'}"><div class="ln h">${kind === 'kirim' ? '<span>Masalliq <span class="dim" style="font-weight:400">— yo\'g\'ini shu yerda qo\'shsa bo\'ladi</span></span><span>Miqdor</span><span>Narxi — 1 kg / 1 dona uchun</span><span>Jami summa</span><span></span>' : '<span>Nima</span><span>Miqdor</span><span class="r">Tannarx</span><span></span>'}</div><div data-lines>${lineRow()}</div></div>
+      <div class="lines ${kind === 'kirim' ? '' : 'rec'}"><div class="ln h">${kind === 'kirim' ? '<span>Element <span class="dim" style="font-weight:400">— yo\'g\'ini shu yerda qo\'shsa bo\'ladi</span></span><span>Miqdor</span><span>Narxi — 1 kg / 1 dona uchun</span><span>Jami summa</span><span></span>' : '<span>Nima</span><span>Miqdor</span><span class="r">Tannarx</span><span></span>'}</div><div data-lines>${lineRow()}</div></div>
       <button class="btn sm" data-more type="button">${icon('plus')}Yana qator</button>
       ${kind === 'kirim' ? `<div class="grid3 mt"><div class="stat"><div class="l">Jami summa</div><div class="v" data-total>0</div></div>
         <div class="field"><label>Hozir to'landi</label><input class="input money" data-paid inputmode="numeric" placeholder="0 — hammasi qarzga"></div>
@@ -636,7 +636,7 @@ async function docForm(kind) {
           for (const ln of $$('[data-ln]', mm)) {
             const id = Number(ln.querySelector('[data-pkq]').dataset.id); const q = qtyVal(ln.querySelector('[data-q]'), id > 0 ? unitOf(id) : 'dona');
             if (!id && !q) continue;
-            if (!id) { toast('Qatorda masalliq tanlanmagan', 'bad'); return; }
+            if (!id) { toast('Qatorda element tanlanmagan', 'bad'); return; }
             if (!(q > 0)) { toast('Miqdorni kiriting', 'bad'); ln.querySelector('[data-q]').focus(); return; }
             if (kind === 'kirim') {
               const t = moneyVal(ln.querySelector('[data-t]')); const p = moneyVal(ln.querySelector('[data-p]'));
@@ -665,8 +665,8 @@ PAGES.today = async (m) => {
   const active = d.rows.filter((r) => r.in_q || r.used_q || r.waste_q);
   m.innerHTML = head('Bugun omborda', `${date(day + 'T12:00:00Z')} · nima keldi, nima ishlatildi, qancha qoldi`,
     `<input type="date" class="input" style="height:40px" id="day" value="${day}" max="${today()}">`)
-    + `<div class="stats">${stat('Keldi (kirim)', sum(t.in_v), '', 'accent')}${stat('Ishlatildi (taomlarga)', sum(t.used_v))}${stat('Utilizatsiya', sum(t.waste_v))}${stat('Hozir omborda', sum(t.stock_v), `${t.low} ta masalliq kam`)}</div>
-    <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Masalliq</th><th class="r">Keldi</th><th class="r">Summa</th><th class="r">Ishlatildi</th><th class="r">Tannarx</th><th class="r">Utilizatsiya</th><th class="r">Hozir qoldi</th></tr></thead><tbody>
+    + `<div class="stats">${stat('Keldi (kirim)', sum(t.in_v), '', 'accent')}${stat('Ishlatildi (taomlarga)', sum(t.used_v))}${stat('Utilizatsiya', sum(t.waste_v))}${stat('Hozir omborda', sum(t.stock_v), `${t.low} ta element kam`)}</div>
+    <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Element</th><th class="r">Keldi</th><th class="r">Summa</th><th class="r">Ishlatildi</th><th class="r">Tannarx</th><th class="r">Utilizatsiya</th><th class="r">Hozir qoldi</th></tr></thead><tbody>
     ${active.map((r) => `<tr class="click" data-i="${r.id}"><td><b>${esc(r.name)}</b></td><td class="r ${r.in_q ? 'okc' : 'dim'}">${r.in_q ? '+' + qty(r.in_q, r.unit) : '—'}</td><td class="r">${r.in_v ? sum(r.in_v) : ''}</td>
       <td class="r">${r.used_q ? qty(r.used_q, r.unit) : '<span class="dim">—</span>'}</td><td class="r">${r.used_v ? sum(r.used_v) : ''}</td><td class="r ${r.waste_q ? 'neg' : 'dim'}">${r.waste_q ? qty(r.waste_q, r.unit) : '—'}</td>
       <td class="r ${r.stock < 0 ? 'neg' : ''}"><b>${qty(r.stock, r.unit)}</b> ${r.low ? '<span class="badge warn">kam</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="7"><div class="empty">Bu kunda ombor harakati yo\'q</div></td></tr>'}
@@ -675,7 +675,7 @@ PAGES.today = async (m) => {
   $$('[data-i]', m).forEach((r) => r.onclick = () => movesModal(Number(r.dataset.i), d.rows.find((x) => x.id === Number(r.dataset.i))?.name));
 };
 
-/** Utilizatsiya — alohida bo'lim: yaroqsiz masalliq yoki tayyor taomni sababi bilan hisobdan chiqarish. */
+/** Utilizatsiya — alohida bo'lim: yaroqsiz element yoki tayyor taomni sababi bilan hisobdan chiqarish. */
 PAGES.waste = (m) => PAGES.docs(m, 'waste');
 // Inventarizatsiya — menyuda alohida: ilgari faqat «Kirim» sahifasidagi tugma ortida edi va egasi topolmadi.
 PAGES.inv = (m) => PAGES.docs(m, 'inv');
@@ -690,7 +690,7 @@ PAGES.docs = async (m, mode = '') => {
     : inv ? head('Inventarizatsiya', `${rlabel()} · omborni sanab, haqiqiy qoldiqni kiriting — kamomad yoki ortiqcha o'zi hisoblanadi`, `<button class="btn primary" data-doc="inventar">${icon('check')}Inventarizatsiya qilish</button>`)
     : head('Kirim va hujjatlar', rlabel(), `<button class="btn primary" data-doc="kirim">${icon('truckin')}Kirim</button><button class="btn" data-doc="utilizatsiya">${icon('trash')}Utilizatsiya</button><button class="btn" data-doc="inventar">${icon('check')}Inventarizatsiya</button>`))
     + rangeBar(() => show(waste ? 'waste' : inv ? 'inv' : 'docs'))
-    + (inv ? `<div class="card mt" style="padding:12px 16px;font-size:14px">Qanday qilinadi: <b>«Inventarizatsiya qilish»</b>ni bosing → ombordagi masalliqlarni sanab, haqiqiy miqdorini yozing (sanalmaganini bo'sh qoldiring) → Saqlash. Qoldiq shu songa tenglanadi, farq <b>Moddiy hisobot</b>dagi «Inventar / farq» ustunida ko'rinadi.</div>
+    + (inv ? `<div class="card mt" style="padding:12px 16px;font-size:14px">Qanday qilinadi: <b>«Inventarizatsiya qilish»</b>ni bosing → ombordagi elementlarni sanab, haqiqiy miqdorini yozing (sanalmaganini bo'sh qoldiring) → Saqlash. Qoldiq shu songa tenglanadi, farq <b>Moddiy hisobot</b>dagi «Inventar / farq» ustunida ko'rinadi.</div>
       <div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length, 'tanlangan davrda')}</div>`
       : waste ? `<div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length)}${stat('Zarar (tannarxda)', sum(wasteSum), 'moddiy hisobotda alohida ustun')}</div>`
       : `<div class="seg mt" id="kinds">${[['', 'Hammasi'], ['kirim', 'Kirim'], ['utilizatsiya', 'Utilizatsiya'], ['inventar', 'Inventarizatsiya'], ['tayyorlash', 'Tayyorlash']].map(([k, l]) => `<button data-k="${k}" class="${kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)
@@ -710,7 +710,7 @@ async function docView(id) {
   openModal({
     title: `${KIND[x.kind]} #${x.id} — ${dateTime(x.at)}`, size: 'wide',
     body: `<p class="hint" style="margin-bottom:10px">${esc(x.supplier || x.reason || '')} ${x.note ? '· ' + esc(x.note) : ''} · ${esc(x.user_name || '')}${x.cancelled_at ? ` · <b class="neg">bekor qilingan ${dateTime(x.cancelled_at)}</b>` : ''}</p>
-      <table class="tbl"><thead><tr><th>Masalliq</th><th>Taom</th><th class="r">Miqdor</th><th class="r">Narx</th><th class="r">Summa</th></tr></thead><tbody>
+      <table class="tbl"><thead><tr><th>Element</th><th>Taom</th><th class="r">Miqdor</th><th class="r">Narx</th><th class="r">Summa</th></tr></thead><tbody>
       ${d.moves.map((mv) => `<tr style="${mv.kind === 'bekor' ? 'opacity:.55' : ''}"><td>${esc(mv.name)}${mv.kind === 'bekor' ? ' <span class="dim">(bekor)</span>' : ''}</td><td class="dim">${esc(mv.product || '')}</td><td class="r">${qty(mv.qty, mv.unit)}</td><td class="r">${sum(mv.cost)}</td><td class="r">${sum(mv.sum)}</td></tr>`).join('')}
       <tr class="total"><td colspan="4">Jami</td><td class="r">${sum(x.total)}</td></tr></tbody></table>
       ${x.kind === 'kirim' ? `<p style="margin-top:10px">To'landi: <b>${sum(x.paid)}</b>${x.total - x.paid > 0 ? ` · qarz: <b class="neg">${sum(x.total - x.paid)}</b>` : ''}</p>` : ''}`,
@@ -728,12 +728,12 @@ PAGES.preps = async (m) => {
   const hist = (await S(`/api/stock/docs?from=${dayShift(today(), -30)}&to=${today()}&kind=tayyorlash`)).docs;
   const ready = d.preps.reduce((s, p) => s + Math.max(0, p.stock) * p.cost, 0);
   const unknown = d.preps.filter((p) => p.no_cost).length;
-  m.innerHTML = head('Zagotovkalar', 'Yarim tayyor mahsulot: kotlet, sous, xamir, marinad… O\'zi masalliqlardan tayyorlanadi, taom texkartasiga bitta element bo\'lib qo\'yiladi',
+  m.innerHTML = head('Zagotovkalar', 'Yarim tayyor mahsulot: kotlet, sous, xamir, marinad… O\'zi elementlardan tayyorlanadi, taom texkartasiga bitta element bo\'lib qo\'yiladi',
     `<button class="btn" id="make" ${d.preps.length ? '' : 'disabled'}>${icon('flame')}Tayyorlash</button><button class="btn primary" id="add">${icon('plus')}Zagotovka</button>`)
     + `<div class="card" style="padding:12px 16px;font-size:14px;line-height:1.55"><b>Qanday ishlaydi.</b> 1) Zagotovkaning tarkibini yozing: nimadan tayyorlanadi va shu tarkibdan qancha chiqadi (masalan 1 kg qiyma + 100 g piyoz → 10 dona kotlet).
-      2) Taom texkartasida uni oddiy masalliqdek tanlang («Kotlet — 1 dona»). 3) Taom sotilganda omborda <b>tayyori</b> bo'lsa o'shandan ayiriladi, bo'lmasa <b>tarkibidagi masalliqlar</b> o'zi ayiriladi.
-      Oldindan ko'p tayyorlab qo'ysangiz «Tayyorlash»ni bosing — masalliq ombordan chiqadi, tayyor zagotovka soni ko'rinib turadi.</div>
-    <div class="stats mt">${stat('Zagotovkalar', d.preps.length, 'turi', 'accent')}${stat('Tayyor turgani (tannarxda)', sum(Math.round(ready)))}${stat('Narxi to\'liq emas', `<span class="${unknown ? 'neg' : ''}">${unknown}</span>`, 'tarkibidagi masalliq kirim qilinmagan')}</div>
+      2) Taom texkartasida uni oddiy elementdek tanlang («Kotlet — 1 dona»). 3) Taom sotilganda omborda <b>tayyori</b> bo'lsa o'shandan ayiriladi, bo'lmasa <b>tarkibidagi elementlar</b> o'zi ayiriladi.
+      Oldindan ko'p tayyorlab qo'ysangiz «Tayyorlash»ni bosing — element ombordan chiqadi, tayyor zagotovka soni ko'rinib turadi.</div>
+    <div class="stats mt">${stat('Zagotovkalar', d.preps.length, 'turi', 'accent')}${stat('Tayyor turgani (tannarxda)', sum(Math.round(ready)))}${stat('Narxi to\'liq emas', `<span class="${unknown ? 'neg' : ''}">${unknown}</span>`, 'tarkibidagi element kirim qilinmagan')}</div>
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Zagotovka</th><th>Tarkibi</th><th class="r">Chiqishi</th><th class="r">1 birlik tannarxi</th><th class="r">Tayyor (omborda)</th><th class="r">Taomlarda</th><th></th></tr></thead><tbody>
     ${d.preps.map((p) => `<tr class="click" data-p="${p.id}"><td><b>${esc(p.name)}</b>${p.grp ? `<div class="dim">${esc(p.grp)}</div>` : ''}</td>
       <td class="wrap">${p.lines.map((l) => `${esc(l.name)} <span class="dim">${qty(l.qty, l.unit)}</span>`).join(', ') || '<span class="neg">tarkibi yozilmagan</span>'}</td>
@@ -745,7 +745,7 @@ PAGES.preps = async (m) => {
     <div class="card mt"><div class="card-h"><h3>Tayyorlashlar</h3><span class="hint">so'nggi 30 kun</span></div><div class="tbl-wrap">
       ${hist.length ? `<table class="tbl"><thead><tr><th>#</th><th>Sana</th><th>Izoh</th><th class="r">Tannarxi</th><th>Kim</th></tr></thead><tbody>
       ${hist.map((x) => `<tr class="click" data-doc="${x.id}" style="${x.cancelled_at ? 'opacity:.5' : ''}"><td>${x.id}</td><td>${dateTime(x.at)}</td><td>${esc(x.note || '')}${x.cancelled_at ? ' <span class="badge">bekor</span>' : ''}</td><td class="r"><b>${sum(x.total)}</b></td><td>${esc(x.user_name || '')}</td></tr>`).join('')}</tbody></table>`
-      : '<div class="empty">Hali tayyorlash yozilmagan — bu majburiy emas: yozilmasa, sotuvda masalliqlar o\'zi ayiriladi</div>'}</div></div>`;
+      : '<div class="empty">Hali tayyorlash yozilmagan — bu majburiy emas: yozilmasa, sotuvda elementlar o\'zi ayiriladi</div>'}</div></div>`;
   const P_ = (id) => d.preps.find((p) => p.id === Number(id));
   $('#add').onclick = () => prepForm();
   $('#make').onclick = () => produceForm(d.preps);
@@ -757,7 +757,7 @@ PAGES.preps = async (m) => {
 
 /**
  * Zagotovka kartasi: nomi, o'lchovi, tarkibi va shu tarkibdan qancha chiqishi.
- * `base` — oddiy masalliq: uni zagotovkaga aylantirish (qoldig'i va texkartalardagi o'rni saqlanadi).
+ * `base` — oddiy element: uni zagotovkaga aylantirish (qoldig'i va texkartalardagi o'rni saqlanadi).
  */
 async function prepForm(p = null, base = null) {
   const all = (await S('/api/stock/ingredients')).ingredients;
@@ -772,15 +772,15 @@ async function prepForm(p = null, base = null) {
     body: `<div class="grid2"><div class="field"><label>Nomi</label><input class="input" data-n value="${esc(p?.name || base?.name || '')}" placeholder="masalan: Kotlet, Burger sousi, Xamir" autofocus></div>
         <div class="field"><label>Guruh</label><input class="input" data-g list="pgrps" value="${esc(p?.grp || base?.grp || '')}" placeholder="Zagotovka"><datalist id="pgrps">${groups.map((g) => `<option value="${esc(g)}">`).join('')}</datalist></div></div>
       <div class="field"><label>Tayyor zagotovka qanday o'lchanadi?</label>${unitChips(unit)}</div>
-      <div class="lbl" style="margin:6px 0 6px">Tarkibi — nimadan tayyorlanadi <span class="dim" style="font-weight:400">— bir partiya uchun. Miqdor masalliqning o'z o'lchovida: 1 (kg), «500 g», 2 (dona)</span></div>
-      <div class="lines rec"><div class="ln h"><span>Masalliq</span><span>Miqdor</span><span class="r">Narxi</span><span></span></div><div data-pls>${(p?.lines?.length ? p.lines : [{}, {}]).map(line).join('')}</div></div>
-      <button class="btn sm" type="button" data-more>${icon('plus')}Masalliq qo'shish</button>
+      <div class="lbl" style="margin:6px 0 6px">Tarkibi — nimadan tayyorlanadi <span class="dim" style="font-weight:400">— bir partiya uchun. Miqdor elementning o'z o'lchovida: 1 (kg), «500 g», 2 (dona)</span></div>
+      <div class="lines rec"><div class="ln h"><span>Element</span><span>Miqdor</span><span class="r">Narxi</span><span></span></div><div data-pls>${(p?.lines?.length ? p.lines : [{}, {}]).map(line).join('')}</div></div>
+      <button class="btn sm" type="button" data-more>${icon('plus')}Element qo'shish</button>
       <div class="field" style="margin-top:14px;max-width:420px"><label>Shu tarkibdan qancha tayyor zagotovka chiqadi?</label><div class="unitbox"><input class="input" data-y inputmode="decimal" value="${p ? num(p.yield) : ''}" placeholder="masalan 10"><span data-yu>${UNIT[unit]}</span></div></div>
       <div class="foodcost"><div>Partiya tannarxi<b data-bc>0</b></div><div>1 <span data-cu>${UNIT[unit]}</span> tannarxi<b data-uc>—</b></div><div>Omborda tayyori<b>${qty(p?.stock ?? base?.stock ?? 0, unit)}</b></div></div>
       <p class="hint" data-warn style="margin-top:8px"></p>
       <details class="more" ${p?.min_stock ? 'open' : ''}><summary>Qo'shimcha: eng kam qoldiq</summary>
         <div class="field" style="margin-top:10px;max-width:420px"><label>Tayyor zagotovka shundan kam qolsa ogohlantirsin</label><div class="unitbox"><input class="input" data-m inputmode="decimal" value="${p?.min_stock ? num(p.min_stock) : ''}" placeholder="masalan 10"><span data-mu>${UNIT[unit]}</span></div></div></details>`,
-    foot: `${p ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><button class="btn ghost" data-unset>Oddiy masalliq qilish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
+    foot: `${p ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><button class="btn ghost" data-unset>Oddiy element qilish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
     onOpen: (mm, close) => {
       const box = mm.querySelector('[data-pls]');
       const read = () => $$('[data-pl]', mm).map((ln) => {
@@ -802,7 +802,7 @@ async function prepForm(p = null, base = null) {
         mm.querySelector('[data-y]').classList.toggle('bad', !yp.ok);
         mm.querySelector('[data-bc]').textContent = sum(batch);
         mm.querySelector('[data-uc]').textContent = yp.v > 0 && batch ? sum(Math.round(batch / yp.v)) : '—';
-        mm.querySelector('[data-warn]').textContent = missing ? `${missing} ta masalliqning narxi yo'q (hali kirim qilinmagan) — tannarx chala hisoblanadi. Ombor → Kirim orqali narxini kiriting.` : '';
+        mm.querySelector('[data-warn]').textContent = missing ? `${missing} ta elementning narxi yo'q (hali kirim qilinmagan) — tannarx chala hisoblanadi. Ombor → Kirim orqali narxini kiriting.` : '';
       };
       const bind = () => {
         bindPickers(mm, raw, calc, createIngredient);
@@ -818,10 +818,10 @@ async function prepForm(p = null, base = null) {
         const rows = read().filter((r) => r.name || r.qi.value.trim());
         if (!rows.length) { toast('Tarkibini yozing — zagotovka nimadan tayyorlanadi', 'bad'); return; }
         for (const r of rows) {
-          if (!r.i) { toast(`«${r.name || '…'}» — ro'yxatdan masalliqni tanlang`, 'bad'); r.ln.querySelector('[data-pkq]').focus(); return; }
+          if (!r.i) { toast(`«${r.name || '…'}» — ro'yxatdan elementni tanlang`, 'bad'); r.ln.querySelector('[data-pkq]').focus(); return; }
           if (!r.qp.ok || !(r.qp.v > 0)) { toast(`${r.i.name} — miqdorini yozing (masalan 1 yoki «500 g»)`, 'bad'); r.qi.focus(); return; }
         }
-        if (new Set(rows.map((r) => r.id)).size !== rows.length) { toast('Bir masalliq ikki marta yozilgan', 'bad'); return; }
+        if (new Set(rows.map((r) => r.id)).size !== rows.length) { toast('Bir element ikki marta yozilgan', 'bad'); return; }
         const yi = mm.querySelector('[data-y]'); const yp = qtyParse(yi.value, unit);
         if (!yp.ok || !(yp.v > 0)) { toast('Shu tarkibdan qancha chiqishini yozing (masalan 10)', 'bad'); yi.focus(); return; }
         const mp = qtyParse(mm.querySelector('[data-m]').value, unit);
@@ -836,15 +836,15 @@ async function prepForm(p = null, base = null) {
         try { await P('/api/stock/ingredient/remove', { id: p.id }); toast('O\'chirildi', 'ok'); close(true); } catch (e) { fail(e); }
       });
       mm.querySelector('[data-unset]')?.addEventListener('click', async () => {
-        if (!(await confirmBox(`${p.name} oddiy masalliq bo'lsinmi? Tarkibi o'chadi — sotuvda faqat o'zining qoldig'idan ayiriladi. Qoldig'i va texkartalardagi o'rni saqlanadi.`, { ok: 'Ha' }))) return;
-        try { await P('/api/stock/prep/unset', { id: p.id }); toast('Oddiy masalliq bo\'ldi', 'ok'); close(true); } catch (e) { fail(e); }
+        if (!(await confirmBox(`${p.name} oddiy element bo'lsinmi? Tarkibi o'chadi — sotuvda faqat o'zining qoldig'idan ayiriladi. Qoldig'i va texkartalardagi o'rni saqlanadi.`, { ok: 'Ha' }))) return;
+        try { await P('/api/stock/prep/unset', { id: p.id }); toast('Oddiy element bo\'ldi', 'ok'); close(true); } catch (e) { fail(e); }
       });
     },
   });
   if (res) show(A.page === 'stock' ? 'stock' : 'preps');
 }
 
-/** Tayyorlash: N birlik zagotovka tayyorlandi — masalliqlar ombordan chiqadi, zagotovka kiradi. */
+/** Tayyorlash: N birlik zagotovka tayyorlandi — elementlar ombordan chiqadi, zagotovka kiradi. */
 async function produceForm(preps, pre = null) {
   const ok_ = preps.filter((p) => p.lines.length);
   if (!ok_.length) { toast('Avval zagotovkaning tarkibini yozing', 'bad'); return; }
@@ -868,7 +868,7 @@ async function produceForm(preps, pre = null) {
         const rows = cur.lines.map((l) => { const need = Math.round(l.qty * k * 1000) / 1000; const lack = need > l.stock + 1e-9; if (lack && need > 0) short.push(l.name); return { ...l, need, lack }; });
         const cost = rows.reduce((s, l) => s + l.need * l.cost, 0);
         box.innerHTML = `<div class="lbl" style="margin:8px 0 6px">Ombordan chiqadi <span class="dim" style="font-weight:400">— ${qty(cur.yield, cur.unit)} uchun yozilgan tarkib bo'yicha</span></div>
-          <table class="tbl"><thead><tr><th>Masalliq</th><th class="r">Kerak</th><th class="r">Omborda bor</th><th class="r">Summa</th></tr></thead><tbody>
+          <table class="tbl"><thead><tr><th>Element</th><th class="r">Kerak</th><th class="r">Omborda bor</th><th class="r">Summa</th></tr></thead><tbody>
           ${rows.map((l) => `<tr><td>${esc(l.name)}</td><td class="r"><b>${qp.v > 0 ? qty(l.need, l.unit) : '—'}</b></td><td class="r ${l.lack && qp.v > 0 ? 'neg' : 'dim'}">${qty(l.stock, l.unit)}${l.lack && qp.v > 0 ? ' — yetmaydi' : ''}</td><td class="r">${qp.v > 0 ? sum(Math.round(l.need * l.cost)) : ''}</td></tr>`).join('')}
           <tr class="total"><td colspan="3">Partiya tannarxi${qp.v > 0 && cost ? ` · 1 ${UNIT[cur.unit]} = ${sum(Math.round(cost / qp.v))}` : ''}</td><td class="r">${qp.v > 0 ? sum(Math.round(cost)) : ''}</td></tr></tbody></table>
           <p class="hint" style="margin-top:8px">Hozir omborda tayyori: <b>${qty(cur.stock, cur.unit)}</b>${qp.v > 0 ? ` → saqlangach <b>${qty(cur.stock + qp.v, cur.unit)}</b>` : ''}</p>`;
@@ -879,10 +879,10 @@ async function produceForm(preps, pre = null) {
         const { q, short } = draw();
         if (!cur) { toast('Zagotovkani tanlang', 'bad'); return; }
         if (!(q > 0)) { toast('Qancha tayyorlanganini yozing', 'bad'); qi.focus(); return; }
-        if (short.length && !(await confirmBox(`Omborda yetmaydi: ${short.join(', ')}. Baribir yozilsinmi? Bu masalliqlar qoldig'i manfiyga tushadi (kirim kiritilmagan bo'lishi mumkin).`, { ok: 'Ha, yozilsin' }))) return;
+        if (short.length && !(await confirmBox(`Omborda yetmaydi: ${short.join(', ')}. Baribir yozilsinmi? Bu elementlar qoldig'i manfiyga tushadi (kirim kiritilmagan bo'lishi mumkin).`, { ok: 'Ha, yozilsin' }))) return;
         try {
           await P('/api/stock/doc', { kind: 'tayyorlash', note: mm.querySelector('[data-note]').value, lines: [{ ingredient_id: cur.id, qty: q }] });
-          toast(`${cur.name}: ${qty(q, cur.unit)} tayyorlandi — masalliqlar ombordan chiqdi`, 'ok'); close(true);
+          toast(`${cur.name}: ${qty(q, cur.unit)} tayyorlandi — elementlar ombordan chiqdi`, 'ok'); close(true);
         } catch (e) { fail(e); }
       };
     },
@@ -897,9 +897,9 @@ PAGES.menu = async (m) => {
   const q = (A.menuQ || '').toLowerCase();
   const st = Object.fromEntries(d.stations.map((s) => [s.id, s.name]));
   const noRecipe = d.products.filter((p) => !costs[p.id]?.cost).length;
-  m.innerHTML = head('Menyu — taomlar va tovarlar', 'Taom — texnologik karta bo\'yicha masalliqlardan tayyorlanadi. Tayyor tovar (Cola, suv, tayyor kotlet) — donalab, omborda o\'zi hisoblanadi.',
+  m.innerHTML = head('Menyu — taomlar va tovarlar', 'Taom — texnologik karta bo\'yicha elementlardan tayyorlanadi. Tayyor tovar (Cola, suv, tayyor kotlet) — donalab, omborda o\'zi hisoblanadi.',
     `<button class="btn" id="addg">${icon('plus')}Tayyor tovar</button><button class="btn primary" id="add">${icon('plus')}Taom</button>`)
-    + `${noRecipe ? `<div class="card" style="border-color:#f0cf86;background:#fffbf1;padding:12px 16px;margin-bottom:14px">${icon('alert')} <b>${noRecipe} ta taomning tannarxi noma'lum</b> — foyda hisobida 0 deb olinadi. Taomni ochib <b>Tannarx</b>ni yozing (tayyor mahsulot) yoki <b>Texnologik karta</b>ni to'ldirib, masalliqlarni kirim qiling.</div>` : ''}
+    + `${noRecipe ? `<div class="card" style="border-color:#f0cf86;background:#fffbf1;padding:12px 16px;margin-bottom:14px">${icon('alert')} <b>${noRecipe} ta taomning tannarxi noma'lum</b> — foyda hisobida 0 deb olinadi. Taomni ochib <b>Tannarx</b>ni yozing (tayyor mahsulot) yoki <b>Texnologik karta</b>ni to'ldirib, elementlarni kirim qiling.</div>` : ''}
     <div class="card"><div class="card-h"><input class="input" id="q" placeholder="Qidirish" value="${esc(A.menuQ || '')}" style="max-width:320px"></div><div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Taom</th><th>Sex</th><th class="r">Narxi</th><th class="r">Tannarx</th><th class="r">Tannarx %</th><th class="r">Foyda</th><th>Texkarta</th><th class="c">Sotuvda</th></tr></thead><tbody>
     ${d.categories.map((c) => { const list = d.products.filter((p) => p.category_id === c.id && (!q || p.name.toLowerCase().includes(q))); if (!list.length) return '';
@@ -908,7 +908,7 @@ PAGES.menu = async (m) => {
         return `<tr class="click" data-p="${p.id}"><td><span style="display:inline-block;width:34px;height:34px;border-radius:8px;vertical-align:middle;margin-right:10px;background:${p.image ? `url('${esc(p.image)}') center/cover` : 'var(--line-2)'}"></span><b>${esc(p.name)}</b>${p.unit === 'kg' ? ' <span class="badge">1 kg</span>' : ''}${p.goods_id ? ' <span class="badge">tovar</span>' : ''}</td><td class="dim">${esc(st[p.station_id || c.station_id] || '—')}</td>
           <td class="r"><b>${sum(p.price)}</b></td><td class="r">${cs ? `${sum(cs.cost)}${cs.src === 'qolda' ? '<div class="dim" style="font-size:12px">qo\'lda</div>' : ''}` : '<span class="badge warn">noma\'lum</span>'}</td>
           <td class="r">${fc == null ? '' : `<span class="badge ${fc > 40 ? 'bad' : fc > 30 ? 'warn' : 'ok'}">${fc}%</span>`}</td><td class="r">${cs ? sum(p.price - cs.cost) : ''}</td>
-          <td>${p.goods_id ? `<span class="${(p.goods_stock || 0) <= 0 ? 'neg' : 'dim'}">omborda ${qty(p.goods_stock || 0, p.unit)}</span>` : costs[p.id]?.lines ? `<span class="dim">${costs[p.id].lines} ta masalliq</span>` : '<span class="dim">—</span>'}</td>
+          <td>${p.goods_id ? `<span class="${(p.goods_stock || 0) <= 0 ? 'neg' : 'dim'}">omborda ${qty(p.goods_stock || 0, p.unit)}</span>` : costs[p.id]?.lines ? `<span class="dim">${costs[p.id].lines} ta element</span>` : '<span class="dim">—</span>'}</td>
           <td class="c"><label class="sw" data-stop="${p.id}"><input type="checkbox" ${p.stop ? '' : 'checked'}></label></td></tr>`; }).join(''); }).join('')}
     </tbody></table></div></div>`;
   $('#q').oninput = (e) => { A.menuQ = e.target.value; clearTimeout(A.qt); A.qt = setTimeout(() => show('menu').then(() => { const i = $('#q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
@@ -929,7 +929,7 @@ async function productForm(p, d, opts = {}) {
   const toInput = (l) => { const u = ilist.find((x) => x.id === l.ingredient_id)?.unit; return u === 'dona' ? String(l.qty).replace('.', ',') : String(Math.round(l.qty * 1000 * 10) / 10).replace('.', ','); };
   const small = (u) => (u === 'kg' ? 'g' : u === 'l' ? 'ml' : 'dona');
   const recLine = (l = {}) => `<div class="ln" data-rl>${picker(ilist, l.ingredient_id)}<div class="unitbox"><input class="input" data-q inputmode="decimal" value="${l.qty ? toInput(l) : ''}" placeholder="0"><span data-u>${l.ingredient_id ? small(ilist.find((x) => x.id === l.ingredient_id)?.unit) : ''}</span></div><span class="sum" data-s></span><button class="icon-btn" type="button" data-rm>${icon('x')}</button><div class="newing" data-nw hidden></div></div>`;
-  // Texkartada miqdor: kg/litr masalliq — gramm/ml da, dona — donada. Odam "10 gr", "30g", "0,03 kg", "1 dona" deb ham yozadi.
+  // Texkartada miqdor: kg/litr element — gramm/ml da, dona — donada. Odam "10 gr", "30g", "0,03 kg", "1 dona" deb ham yozadi.
   const recQty = (raw, unit) => {
     const s = String(raw ?? '').trim().toLowerCase().replace(/\s+/g, '').replace(',', '.');
     if (!s) return { v: 0, ok: true };
@@ -963,9 +963,9 @@ async function productForm(p, d, opts = {}) {
         <div class="grid3"><div class="field"><label>Shtrix-kod</label><input class="input" data-b value="${esc(p?.barcode || '')}"></div><div class="field"><label>IKPU (soliq kodi)</label><input class="input" data-ik value="${esc(p?.ikpu || '')}" placeholder="keyin kerak bo'ladi"></div>
         <div class="field"><label>Tartib</label><input class="input" data-so inputmode="numeric" value="${p?.sort ?? 0}"></div></div></div>
       <div data-tab="rec" hidden><p class="hint" style="margin-bottom:12px">1 ${p?.unit === 'kg' ? 'kg' : 'porsiya'} uchun. Go'sht, sabzavot — <b>grammda</b>, suyuqlik — <b>ml</b>da, bulochka, tuxum — <b>dona</b>da yozing. Masalan: Burger — mol go'shti 170 g, pomidor 60 g, bodring 30 g, ketchup 10 g, mayonez 10 g, bulochka 1 dona.</p>
-        <p class="hint" style="margin:-4px 0 12px">Ro'yxatda yo'q masalliqni shu yerning o'zida qo'shsa bo'ladi — nomini yozing, ostida chiqqan <b>gramm / ml / dona</b> dan o'lchovini tanlang. Miqdorga faqat son yoziladi (10 yoki «10 gr»).</p>
-        <div class="lines rec"><div class="ln h"><span>Masalliq</span><span>Miqdor</span><span class="r">Tannarx</span><span></span></div><div data-rls>${(rec.lines.length ? rec.lines : [{}]).map(recLine).join('')}</div></div>
-        <button class="btn sm" type="button" data-more>${icon('plus')}Masalliq qo'shish</button>
+        <p class="hint" style="margin:-4px 0 12px">Ro'yxatda yo'q elementni shu yerning o'zida qo'shsa bo'ladi — nomini yozing, ostida chiqqan <b>gramm / ml / dona</b> dan o'lchovini tanlang. Miqdorga faqat son yoziladi (10 yoki «10 gr»).</p>
+        <div class="lines rec"><div class="ln h"><span>Element</span><span>Miqdor</span><span class="r">Tannarx</span><span></span></div><div data-rls>${(rec.lines.length ? rec.lines : [{}]).map(recLine).join('')}</div></div>
+        <button class="btn sm" type="button" data-more>${icon('plus')}Element qo'shish</button>
         <div class="card" data-np hidden style="padding:10px 14px;margin-top:12px;background:#fffbf1;border-color:#f0cf86;font-size:13.5px"></div>
         <div class="foodcost"><div>Tannarx<b data-fc>0</b></div><div>Sotuv narxi<b data-fp>0</b></div><div>Tannarx ulushi<b data-fpct>—</b></div><div>Foyda (1 porsiya)<b data-fm>—</b></div></div></div>`,
     foot: `${p ? `<button class="btn danger" data-del>${icon('trash')}O'chirish</button><span class="grow"></span>` : ''}<button class="btn" data-x>Bekor</button><button class="btn primary" data-ok>Saqlash</button>`,
@@ -986,7 +986,7 @@ async function productForm(p, d, opts = {}) {
         $$('[data-rl]', mm).forEach((ln) => {
           const inp = ln.querySelector('[data-pkq]'); const raw = inp.value.trim();
           let id = Number(inp.dataset.id);
-          // Nomi ro'yxatdagi bilan aynan bir xil yozilgan bo'lsa (bosmasdan) — o'sha masalliq.
+          // Nomi ro'yxatdagi bilan aynan bir xil yozilgan bo'lsa (bosmasdan) — o'sha element.
           if (!id && raw) { const ex = ilist.find((x) => x.name.toLowerCase() === raw.toLowerCase()); if (ex) { inp.dataset.id = ex.id; id = ex.id; } }
           const i = ilist.find((x) => x.id === id);
           // Ro'yxatda yo'q nom: qatorning ostida o'lchov so'raladi (yozib bo'lingach — nom maydonidan chiqilganda).
@@ -995,7 +995,7 @@ async function productForm(p, d, opts = {}) {
           if (need && nw.dataset.for !== raw) {
             nw.dataset.for = raw;
             // Hech biri oldindan belgilanmaydi: belgilangan ko'rinsa "tanlandi" deb o'ylanadi, aslida hali bosilmagan bo'ladi.
-            nw.innerHTML = `<span>«${esc(raw)}» ro'yxatda yo'q — <b>yangi masalliq</b>. Qanday o'lchanadi? Bittasini bosing:</span>
+            nw.innerHTML = `<span>«${esc(raw)}» ro'yxatda yo'q — <b>yangi element</b>. Qanday o'lchanadi? Bittasini bosing:</span>
               <span class="nw-b">${[['kg', 'gramm (kg)'], ['l', 'ml (litr)'], ['dona', 'dona']].map(([k, t]) => `<button type="button" data-nwu="${k}">${t}</button>`).join('')}</span>`;
           }
           if (!need) nw.dataset.for = '';
@@ -1004,18 +1004,18 @@ async function productForm(p, d, opts = {}) {
           const qI = ln.querySelector('[data-q]'); const qp = recQty(qI.value, i?.unit || 'kg'); qI.classList.toggle('bad', !qp.ok);
           const v = qp.v; const base = i ? (i.unit === 'dona' ? v : v / 1000) : 0;
           const c = i ? base * i.cost : 0; cost += c;
-          ln.querySelector('[data-s]').innerHTML = i && v ? (i.cost ? sum(c) : '<span class="badge warn" title="Bu masalliq hali kirim qilinmagan">narxi yo\'q</span>') : '';
+          ln.querySelector('[data-s]').innerHTML = i && v ? (i.cost ? sum(c) : '<span class="badge warn" title="Bu element hali kirim qilinmagan">narxi yo\'q</span>') : '';
           if (i && v && !i.cost) noPrice++;
         });
         const np = mm.querySelector('[data-np]');
-        if (np) { np.hidden = !noPrice; np.innerHTML = `${icon('alert')} <b>${noPrice} ta masalliqning narxi yo'q</b> — ular hali kirim qilinmagan. Narx <b>Ombor → Kirim</b> qilinganda o'zi qo'yiladi. Shoshilinch bo'lsa «Asosiy» bo'limida tannarxni qo'lda yozing.`; }
+        if (np) { np.hidden = !noPrice; np.innerHTML = `${icon('alert')} <b>${noPrice} ta elementning narxi yo'q</b> — ular hali kirim qilinmagan. Narx <b>Ombor → Kirim</b> qilinganda o'zi qo'yiladi. Shoshilinch bo'lsa «Asosiy» bo'limida tannarxni qo'lda yozing.`; }
         const price = moneyVal(mm.querySelector('[data-pr]'));
         mm.querySelector('[data-fc]').textContent = sum(cost); mm.querySelector('[data-fp]').textContent = sum(price);
         const manual = moneyVal(mm.querySelector('[data-cost]'));
         const use = cost > 0 ? cost : manual;
         mm.querySelector('[data-costhint]').innerHTML = cost > 0
           ? `Texkartadan hisoblandi: <b>${sum(cost)}</b> so'm — foyda hisobida shu ishlatiladi${price ? ` (foyda ${sum(price - cost)})` : ''}.`
-          : `Texkarta bo'lmasa yoki masalliq narxi kiritilmagan bo'lsa — shu raqam ishlatiladi${price && manual ? `. Foyda: <b>${sum(price - manual)}</b> so'm` : ''}.`;
+          : `Texkarta bo'lmasa yoki element narxi kiritilmagan bo'lsa — shu raqam ishlatiladi${price && manual ? `. Foyda: <b>${sum(price - manual)}</b> so'm` : ''}.`;
         mm.querySelector('[data-fc]').textContent = sum(use);
         mm.querySelector('[data-fpct]').textContent = price ? pct(use, price) + '%' : '—'; mm.querySelector('[data-fm]').textContent = price ? sum(price - use) : '—';
       };
@@ -1050,7 +1050,7 @@ async function productForm(p, d, opts = {}) {
         $$('[data-nwu]', ln).forEach((x) => { x.disabled = true; });
         try {
           const x = await createIngredient(raw, b.dataset.nwu); ilist.push(x); inp.value = x.name; inp.dataset.id = x.id;
-          toast(`${x.name} masalliqlarga qo'shildi (${UNIT[x.unit]})`, 'ok'); calc(); ln.querySelector('[data-q]').focus();
+          toast(`${x.name} elementlarga qo'shildi (${UNIT[x.unit]})`, 'ok'); calc(); ln.querySelector('[data-q]').focus();
         } catch (er) { $$('[data-nwu]', ln).forEach((x) => { x.disabled = false; }); fail(er); }
       });
       mm.querySelector('[data-more]').onclick = () => { mm.querySelector('[data-rls]').insertAdjacentHTML('beforeend', recLine()); bind(); };
@@ -1068,7 +1068,7 @@ async function productForm(p, d, opts = {}) {
         if (goods) {
           if (!gq.ok) { toast('Miqdor son bo\'lsin: masalan 24', 'bad'); gQ.focus(); return; }
           if (gq.v > 0 && !(gp > 0)) { toast('Necha pulga olinganini yozing — tannarx shundan hisoblanadi', 'bad'); gP.focus(); return; }
-          if (p && !p.goods_id && rec.lines.length && !(await confirmBox(`${p.name} tayyor tovar bo'lsinmi? Hozirgi texnologik kartasi (${rec.lines.length} ta masalliq) o'chadi — omborda shu nomli bitta tovar bo'lib hisoblanadi.`, { ok: 'Ha' }))) return;
+          if (p && !p.goods_id && rec.lines.length && !(await confirmBox(`${p.name} tayyor tovar bo'lsinmi? Hozirgi texnologik kartasi (${rec.lines.length} ta element) o'chadi — omborda shu nomli bitta tovar bo'lib hisoblanadi.`, { ok: 'Ha' }))) return;
         }
         const lines = [];
         for (const ln of goods ? [] : $$('[data-rl]', mm)) {
@@ -1077,7 +1077,7 @@ async function productForm(p, d, opts = {}) {
           const qp = recQty(qI.value, i?.unit || 'kg'); const v = qp.v;
           if (!raw && !qI.value.trim()) continue;
           const tab = () => mm.querySelector('.tabs [data-t="rec"]')?.click();
-          if (!i) { tab(); calc(); toast(raw ? `«${raw}» — yangi masalliq: qator ostidan o'lchovini tanlang (gramm, ml yoki dona)` : 'Texkartada masalliq tanlanmagan qator bor', 'bad'); ln.scrollIntoView({ block: 'center' }); return; }
+          if (!i) { tab(); calc(); toast(raw ? `«${raw}» — yangi element: qator ostidan o'lchovini tanlang (gramm, ml yoki dona)` : 'Texkartada element tanlanmagan qator bor', 'bad'); ln.scrollIntoView({ block: 'center' }); return; }
           if (!qp.ok || !(v > 0)) { tab(); toast(`«${i.name}» miqdori ${qp.ok ? 'yozilmagan' : 'noto\'g\'ri — faqat son yozing, masalan 10'}`, 'bad'); qI.focus(); return; }
           lines.push({ ingredient_id: id, qty: i.unit === 'dona' ? v : v / 1000 });
         }
@@ -1115,7 +1115,7 @@ PAGES.mods = async (m) => {
   const menu = await S('/api/admin/menu');
   const ings = (await S('/api/stock/ingredients')).ingredients.map((i) => ({ id: i.id, name: i.name, unit: i.unit, hint: UNIT[i.unit] }));
   const pname = Object.fromEntries(menu.products.map((x) => [x.id, x.name]));
-  m.innerHTML = head('Qo\'shimchalar', 'Taom bosilganda kassada chiqadigan tanlov: pishloq +5 000, qo\'shimcha kotlet, sous tanlash, piyozsiz. Masalliq ko\'rsatilsa — sotilganda ombordan o\'zi yechiladi.',
+  m.innerHTML = head('Qo\'shimchalar', 'Taom bosilganda kassada chiqadigan tanlov: pishloq +5 000, qo\'shimcha kotlet, sous tanlash, piyozsiz. Element ko\'rsatilsa — sotilganda ombordan o\'zi yechiladi.',
     `<button class="btn primary" id="addG">${icon('plus')}Guruh</button>`)
     + (d.groups.length ? `<div class="card"><table class="tbl"><thead><tr><th>Guruh</th><th>Qo'shimchalar</th><th>Qaysi taomlarda</th><th>Tanlov</th></tr></thead><tbody>
       ${d.groups.map((g) => `<tr class="click" data-g="${g.id}"><td><b>${esc(g.name)}</b></td>
@@ -1128,7 +1128,7 @@ PAGES.mods = async (m) => {
   const form = async (g) => {
     const row = (x = {}) => `<div class="ln" data-mid="${x.id || ''}"><input class="input" data-mn placeholder="Pishloq" value="${esc(x.name || '')}">
       <div class="unitbox"><input class="input" data-mp inputmode="numeric" placeholder="0" value="${x.price ? sum(x.price) : ''}"><span>so'm</span></div>
-      ${picker(ings, x.ingredient_id, 'Masalliq (ixtiyoriy)')}
+      ${picker(ings, x.ingredient_id, 'Element (ixtiyoriy)')}
       <div class="unitbox"><input class="input" data-mq inputmode="decimal" placeholder="—" value="${x.ingredient_qty ? String(x.ingredient_qty).replace('.', ',') : ''}"><span data-mu>${esc(UNIT[ings.find((i) => i.id === x.ingredient_id)?.unit] || '')}</span></div>
       <button class="icon-btn" data-drop aria-label="Ro'yxatdan chiqarish">${icon('x')}</button></div>`;
     const sel = new Set(g?.product_ids || []);
@@ -1168,7 +1168,7 @@ PAGES.mods = async (m) => {
             const n = ln.querySelector('[data-mn]').value.trim(); if (!n) continue;
             const iid = Number(ln.querySelector('[data-pkq]').dataset.id) || null;
             const q = numVal(ln.querySelector('[data-mq]'));
-            if (iid && !(q > 0)) { toast(`«${n}» — masalliq miqdorini yozing (masalan 0,02 kg)`, 'bad'); ln.querySelector('[data-mq]').focus(); return; }
+            if (iid && !(q > 0)) { toast(`«${n}» — element miqdorini yozing (masalan 0,02 kg)`, 'bad'); ln.querySelector('[data-mq]').focus(); return; }
             mods.push({ id: Number(ln.dataset.mid) || null, name: n, price: moneyVal(ln.querySelector('[data-mp]')) || 0, ingredient_id: iid, ingredient_qty: iid ? q : 0 });
           }
           if (!mods.length) { toast('Kamida bitta qo\'shimcha yozing', 'bad'); return; }

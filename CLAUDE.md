@@ -124,6 +124,13 @@ Muhim qoidalar:
   oddiy masalliq, o'lchovi «dona» (`guessUnit` kotlet/sosiska/nagget… uchun o'zi «dona»ni tanlaydi).
 - Bosh sahifada tezkor tugmalar (`.quick`): menyuga qo'shish, masalliq, kirim, zagotovka, analitika — egasi "menyu
   yaratish yo'q" dedi (tugma bor edi, topolmadi).
+- **Nomlar (egasi tanlagan):** panelda «masalliq» o'rniga **«element»**, menyu bo'limi — **«Menyu»** (`['menu', 'Menyu']`,
+  `['stock', 'Elementlar']`). Kodda nomlar o'zgarmagan (`ingredients`, `/api/stock/ingredient`); yangi matn yozsangiz
+  «element» deng, «masalliq» emas.
+- **Kassaning o'zida qo'shish** (`kassa.js` `quickProduct`, `quickElement`): tepada rahbarga «+ Menyu» (taom yoki tayyor
+  tovar) va «+ Element» (nomi, o'lchovi, nechta bor, necha pulga olingan). Boshqaruv yo'llari rahbar sessiyasini so'raydi —
+  kassa uni PIN kiritilganda oladi (`MGR`), so'rov `mgrPost()` bilan ketadi; oflayn bo'lsa qo'shilmaydi (xabar chiqadi).
+  Saqlangach `refreshBoot()` — yangi taom kassa kartochkalarida darrov ko'rinadi. Kassir va ofitsiantda tugmalar yo'q.
 - **Rus tili — to'xtatilgan** (egasi: "rus tili kerak emas"). Yarim tayyor ish `git stash` da («rus tili (to'xtatilgan
   2026-11-24)»): `public/js/i18n.js`, `tools/i18n/`. So'ralmaguncha qaytarmang.
 

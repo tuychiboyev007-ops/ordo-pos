@@ -92,7 +92,7 @@ export async function saveProduct(req, env, db, auth) {
       let ing = goodsIng;
       if (!ing) ing = await tx.first("INSERT INTO ingredients (company_id, name, unit, grp) VALUES (?, ?, ?, 'Tayyor tovar') RETURNING id, name, unit", c, name, unit);
       else if (ing.unit !== unit) await tx.run('UPDATE ingredients SET unit = ? WHERE company_id = ? AND id = ?', unit, c, ing.id);
-      // Taom nomi o'zgarsa ombordagi nomi ham o'zgaradi (boshqa masalliq shu nomda bo'lmasa).
+      // Taom nomi o'zgarsa ombordagi nomi ham o'zgaradi (boshqa element shu nomda bo'lmasa).
       if (ing.linked && ing.name !== name && !(await tx.first('SELECT id FROM ingredients WHERE company_id = ? AND active = true AND lower(name) = lower(?) AND id <> ?', c, name, ing.id))) {
         await tx.run('UPDATE ingredients SET name = ? WHERE company_id = ? AND id = ?', name, c, ing.id);
       }

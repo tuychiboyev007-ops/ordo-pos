@@ -66,7 +66,7 @@ export async function finalizeOrder(tx, company, doc) {
   await tx.run('DELETE FROM order_items WHERE company_id = ? AND order_id = ?', company, doc.id);
   await tx.run('DELETE FROM payments WHERE company_id = ? AND order_id = ?', company, doc.id);
   const units = doc.items.some((i) => i.product_id) ? await unitCosts(tx, company) : new Map();
-  // Qo'shimchalar: tannarxi (masalliqdan yoki qo'lda) va ombordan yechiladigan masalliq.
+  // Qo'shimchalar: tannarxi (elementdan yoki qo'lda) va ombordan yechiladigan element.
   const modIds = [...new Set(doc.items.flatMap((i) => (i.mods || []).map((m) => m.id)).filter(Number.isInteger))];
   const modDefs = new Map((modIds.length ? await tx.all(`SELECT m.id, m.cost::float8 AS cost, m.ingredient_id, m.ingredient_qty::float8 AS iq, g.cost::float8 AS icost
     FROM modifiers m LEFT JOIN ingredients g ON g.id = m.ingredient_id AND g.company_id = m.company_id

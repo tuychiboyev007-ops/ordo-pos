@@ -6,7 +6,7 @@
 import { totals, lineSum, modSum, modsText, modsKey, TYPE_NAMES, PAY_NAMES, PAY_METHODS, ROLE_NAMES, MANAGER_ROLES, shiftSummary, botStatusName } from './core.js';
 import { S, on, start, refreshBoot, dispatch, openOrders, order, shift, notes, nextNumber, stationName, tableName, hallOf, staffName, setting, flushSoon } from './store.js';
 import { deviceToken, get, post } from './api.js';
-import { $, $$, esc, sum, qty, time, dateTime, since, uid, initials, icon, toast, openModal, confirmBox, numberBox, isTopModal, MARK } from './ui.js';
+import { $, $$, esc, sum, qty, time, dateTime, since, uid, initials, icon, toast, openModal, confirmBox, numberBox, isTopModal, MARK, moneyInput, moneyVal, qtyParse } from './ui.js';
 import { pinHash, sameHex } from './pin.js';
 import { modsFor, pickMods } from './mods.js';
 import { receiptHTML, kitchenHTML, cancelHTML, zReportHTML, print, printCfg, setPrintCfg } from './print.js';
@@ -70,6 +70,7 @@ function renderTop() {
   }
   $('#top').innerHTML = `${ui.view === 'order' ? `<button class="icon-btn" data-back aria-label="Orqaga">${icon('back')}</button>` : ''}
     <h1>${esc(title)}</h1>${crumb ? `<span class="crumb">${crumb}</span>` : ''}<div class="sp"></div>
+    ${isManager() ? `<button class="btn sm qadd" data-addmenu title="Menyuga taom yoki tayyor tovar qo'shish">${icon('plus')}Menyu</button><button class="btn sm qadd" data-addel title="Element qo'shish: kotlet, bulochka, sous…">${icon('plus')}Element</button>` : ''}
     ${S.failed.length ? `<button class="btn sm danger" data-failed>${icon('alert')}${S.failed.length} ta amal rad etildi</button>` : ''}
     ${sync}
     ${sh ? `<button class="shift-chip" data-nav="smena">${icon('clock')}Smena${sh.number ? ' №' + sh.number : ''} · ${time(sh.opened_at)}</button>`
@@ -1108,6 +1109,127 @@ function renderNotesList() {
   $$('[data-done]', box).forEach((b) => b.onclick = () => { try { dispatch('note.done', { note_id: b.dataset.done }); renderNotesList(); renderRail(); } catch (e) { fail(e); } });
 }
 
+// =================== Menyu va element qo'shish — kassaning o'zida (faqat rahbar, internet bilan) ===================
+// Boshqaruv yo'llari rahbar sessiyasini so'raydi: u PIN kiritilganda olinadi (MGR). Oflayn bo'lsa qo'shib bo'lmaydi.
+async function mgrPost(path, body) {
+  if (!MGR) throw new Error('Internet kerak: menyu va element faqat onlayn qo\'shiladi. Aloqa bo\'lsa — qulflab, PIN bilan qayta kiring.');
+  let res;
+  try { res = await fetch(path, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + MGR.t }, body: JSON.stringify(body) }); }
+  catch { throw new Error(navigator.onLine === false ? 'Internet yo\'q' : 'Server javob bermadi'); }
+  let data = {};
+  try { data = await res.json(); } catch { /* */ }
+  if (!res.ok || data.ok === false) throw new Error(res.status === 401 ? 'Sessiya eskirgan — qulflab, PIN bilan qayta kiring' : data.message || `Xato (${res.status})`);
+  return data;
+}
+const UNIT_L = { kg: 'kg', l: 'litr', dona: 'dona' };
+const guessUnit = (name) => {
+  const n = String(name).toLowerCase();
+  if (/bulochka|non\b|lavash|tuxum|stakan|paket|qopqoq|quti|banka|butilka|cola|pepsi|fanta|sprite|dona|qadoq|lepyoshka|bun|kotlet|sosiska|nagget|naget|tortil|pita\b|shokolad|chips|salfetka|somsa/.test(n)) return 'dona';
+  if (/yog'|yog‘|sut\b|qaymoq|sharbat|sirop|suv\b|moy\b/.test(n)) return 'l';
+  return 'kg';
+};
+
+/** «+ Menyu»: taom yoki tayyor tovar. Rasm va texnologik karta keyin Boshqaruvda qo'shiladi. */
+async function quickProduct() {
+  if (!cats().length) { toast('Avval Boshqaruv → Menyu → Toifalar\'da toifa oching', 'bad'); return; }
+  const cur = cats().some((c) => c.id === ui.cat) ? ui.cat : cats()[0].id;
+  let kind = 'taom'; let added = 0;
+  await openModal({
+    title: 'Menyuga qo\'shish',
+    body: `<div class="qkind" data-kind><button type="button" class="on" data-k="taom"><b>Taom</b><small>oshxonada tayyorlanadi: burger, lavash…</small></button>
+        <button type="button" data-k="tovar"><b>Tayyor tovar</b><small>donalab sotiladi: Cola, suv, non…</small></button></div>
+      <div class="field" style="margin-top:14px"><label>Nomi</label><input class="input" data-n placeholder="masalan: Chizburger yoki Cola 0,5" autofocus></div>
+      <div class="grid2"><div class="field"><label>Toifa</label><select class="input" data-c>${cats().map((c) => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Sotuv narxi (so'm)</label><input class="input money" data-pr inputmode="numeric" placeholder="masalan 32 000"></div></div>
+      <div data-g hidden><div class="lbl" style="margin-bottom:8px">Hozir omborda bormi? <span class="hint">— bo'lsa yozing, kirim o'zi yoziladi</span></div>
+        <div class="grid2"><div class="field"><label>Nechta bor (dona)</label><input class="input" data-gq inputmode="decimal" placeholder="masalan 24"></div>
+        <div class="field"><label>Jami necha pulga olingan (so'm)</label><input class="input money" data-gp inputmode="numeric" placeholder="masalan 132 000"></div></div></div>
+      <p class="hint" data-h></p>`,
+    foot: `<button class="btn" data-x>Yopish</button><button class="btn" data-again>Saqlash va yana qo'shish</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
+    onOpen: (m, close) => {
+      const q = (s) => m.querySelector(s);
+      moneyInput(q('[data-pr]')); moneyInput(q('[data-gp]'));
+      const draw = () => {
+        m.querySelectorAll('[data-k]').forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
+        q('[data-g]').hidden = kind !== 'tovar';
+        const price = moneyVal(q('[data-pr]')); const gq = qtyParse(q('[data-gq]').value, 'dona'); const gp = moneyVal(q('[data-gp]'));
+        q('[data-gq]').classList.toggle('bad', !gq.ok);
+        q('[data-h]').textContent = kind === 'taom' ? 'Rasm va texnologik karta (nimadan tayyorlanadi) keyin Boshqaruv → Menyu\'da qo\'shiladi.'
+          : gq.v > 0 && gp > 0 ? `1 dona tannarxi ${sum(Math.round(gp / gq.v))} so'm${price ? ` · foyda ${sum(price - Math.round(gp / gq.v))}` : ''}` : 'Sotilganda ombordan donalab ayiriladi — texnologik karta kerak emas.';
+      };
+      m.querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { kind = b.dataset.k; draw(); });
+      m.addEventListener('input', draw); draw();
+      const save = async (again) => {
+        const name = q('[data-n]').value.trim(); const price = moneyVal(q('[data-pr]'));
+        if (!name) { toast('Nomini yozing', 'bad'); q('[data-n]').focus(); return; }
+        if (!(price > 0)) { toast('Sotuv narxini yozing', 'bad'); q('[data-pr]').focus(); return; }
+        const goods = kind === 'tovar'; const gq = qtyParse(q('[data-gq]').value, 'dona'); const gp = moneyVal(q('[data-gp]'));
+        if (goods && !gq.ok) { toast('Miqdor son bo\'lsin: masalan 24', 'bad'); q('[data-gq]').focus(); return; }
+        if (goods && gq.v > 0 && !(gp > 0)) { toast('Necha pulga olinganini yozing — tannarx shundan hisoblanadi', 'bad'); q('[data-gp]').focus(); return; }
+        const btns = [...m.querySelectorAll('[data-ok],[data-again]')]; btns.forEach((b) => { b.disabled = true; });
+        try {
+          const r = await mgrPost('/api/admin/product', { name, price, category_id: Number(q('[data-c]').value), goods });
+          if (goods && gq.v > 0) await mgrPost('/api/stock/doc', { kind: 'kirim', note: 'Kassadan kirim', lines: [{ ingredient_id: r.goods_id, qty: gq.v, price: gp / gq.v }] });
+          added++;
+          await refreshBoot().catch(() => {});
+          toast(`${name} menyuga qo'shildi`, 'ok');
+          if (again) { for (const k of ['[data-n]', '[data-pr]', '[data-gq]', '[data-gp]']) q(k).value = ''; draw(); q('[data-n]').focus(); renderView(); } else close(true);
+        } catch (e) { toast(e.message || 'Xatolik', 'bad'); }
+        btns.forEach((b) => { b.disabled = false; });
+      };
+      q('[data-ok]').onclick = () => save(false); q('[data-again]').onclick = () => save(true);
+    },
+  });
+  if (added) renderView();
+}
+
+/** «+ Element»: taom tarkibida ishlatiladigan narsa — kotlet, bulochka, sous… (ombor masallig'i). */
+async function quickElement() {
+  let unit = 'dona'; let touched = false; let added = 0;
+  await openModal({
+    title: 'Element qo\'shish',
+    body: `<p class="hint" style="margin-bottom:12px">Element — taom tarkibiga ketadigan narsa: kotlet, bulochka, pishloq, sous… Omborda hisoblanadi, taom sotilganda texnologik karta bo'yicha o'zi ayiriladi.</p>
+      <div class="field"><label>Nomi</label><input class="input" data-n placeholder="masalan: Kotlet, Bulochka, Ketchup" autofocus></div>
+      <div class="field"><label>Qanday o'lchanadi?</label><div class="qkind three" data-units>${[['dona', 'dona', 'kotlet, bulochka, tuxum'], ['kg', 'kg', 'go\'sht, sabzavot, sous'], ['l', 'litr', 'yog\', sut, sharbat']].map(([k, t, h]) => `<button type="button" data-uv="${k}"><b>${t}</b><small>${h}</small></button>`).join('')}</div></div>
+      <div class="lbl" style="margin-bottom:8px">Hozir omborda bormi? <span class="hint">— bo'lsa yozing, kirim o'zi yoziladi</span></div>
+      <div class="grid2"><div class="field"><label data-ql>Nechta bor</label><input class="input" data-sq inputmode="decimal" placeholder="masalan 100"></div>
+        <div class="field"><label>Jami necha pulga olingan (so'm)</label><input class="input money" data-sp inputmode="numeric" placeholder="masalan 600 000"></div></div>
+      <p class="hint" data-h></p>`,
+    foot: `<button class="btn" data-x>Yopish</button><button class="btn" data-again>Saqlash va yana qo'shish</button><button class="btn primary" data-ok>${icon('check')}Saqlash</button>`,
+    onOpen: (m, close) => {
+      const q = (s) => m.querySelector(s);
+      moneyInput(q('[data-sp]'));
+      const draw = () => {
+        m.querySelectorAll('[data-uv]').forEach((b) => b.classList.toggle('on', b.dataset.uv === unit));
+        q('[data-ql]').textContent = unit === 'dona' ? 'Nechta bor (dona)' : `Qancha bor (${UNIT_L[unit]})`;
+        const sq = qtyParse(q('[data-sq]').value, unit); const sp = moneyVal(q('[data-sp]'));
+        q('[data-sq]').classList.toggle('bad', !sq.ok);
+        q('[data-h]').textContent = sq.ok && sq.v > 0 && sp > 0 ? `1 ${UNIT_L[unit]} = ${sum(Math.round(sp / sq.v))} so'm` : '';
+      };
+      m.querySelectorAll('[data-uv]').forEach((b) => b.onclick = () => { touched = true; unit = b.dataset.uv; draw(); });
+      q('[data-n]').addEventListener('input', () => { if (!touched) unit = guessUnit(q('[data-n]').value); });
+      m.addEventListener('input', draw); draw();
+      const save = async (again) => {
+        const name = q('[data-n]').value.trim(); if (!name) { toast('Nomini yozing', 'bad'); q('[data-n]').focus(); return; }
+        const sq = qtyParse(q('[data-sq]').value, unit); const sp = moneyVal(q('[data-sp]'));
+        if (!sq.ok) { toast('Miqdor son bo\'lsin: masalan 10, 0,5 yoki «500 g»', 'bad'); q('[data-sq]').focus(); return; }
+        if (sq.v > 0 && !(sp > 0)) { toast('Necha pulga olinganini yozing — tannarx shundan hisoblanadi', 'bad'); q('[data-sp]').focus(); return; }
+        const btns = [...m.querySelectorAll('[data-ok],[data-again]')]; btns.forEach((b) => { b.disabled = true; });
+        try {
+          const r = await mgrPost('/api/stock/ingredient', { name, unit });
+          if (sq.v > 0) await mgrPost('/api/stock/doc', { kind: 'kirim', note: 'Kassadan kirim', lines: [{ ingredient_id: r.id, qty: sq.v, price: sp / sq.v }] });
+          added++;
+          toast(sq.v > 0 ? `${name} qo'shildi — omborga ${qty(sq.v, unit)} kirim qilindi` : `${name} elementlarga qo'shildi`, 'ok');
+          if (again) { for (const k of ['[data-n]', '[data-sq]', '[data-sp]']) q(k).value = ''; touched = false; unit = 'dona'; draw(); q('[data-n]').focus(); } else close(true);
+        } catch (e) { toast(e.message || 'Xatolik', 'bad'); }
+        btns.forEach((b) => { b.disabled = false; });
+      };
+      q('[data-ok]').onclick = () => save(false); q('[data-again]').onclick = () => save(true);
+    },
+  });
+  return added;
+}
+
 // =================== Qulf (PIN) ===================
 // Egasi yoki menejer kassada PIN kiritsa — boshqaruv uchun ham sessiya shu zahoti olinadi:
 // kassadagi «Boshqaruv» tugmasi panelni qayta PIN so'ramasdan ochadi.
@@ -1263,6 +1385,8 @@ document.addEventListener('click', async (e) => {
   if ('back' in d) return go(ui.back, { order: null, draft: null });
   if ('openShift' in d) return openShift();
   if ('me' in d) return meMenu();
+  if ('addmenu' in d) return quickProduct();
+  if ('addel' in d) return quickElement();
   if ('failed' in d) return showFailed();
   if (d.hall) { ui.hall = Number(d.hall); return renderView(); }
   if (d.table) {
