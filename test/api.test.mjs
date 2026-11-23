@@ -275,6 +275,106 @@ group('Foyda: har taom tannarxi va foydasi');
   ok(mr.money.revenue === 0 && mr.money.net === 0 && mr.money.staff === 0, 'savdosiz davrda pul xulosasi nol', mr.money);
 }
 
+// ---------- To'lov turini tuzatish ----------
+group('Yopilgan chekda to\'lov turini o\'zgartirish');
+{
+  const SH4 = id('s'); await sync([op('shift.open', { shift_id: SH4, cash: 100000 })]);
+  const O = id('o'); const PAY = id('y'); const PAY2 = id('y');
+  let r = await sync([op('open', { type: 'olib', number: 1, shift_id: SH4 }, O), op('add', { item: { id: id('i'), product_id: cola, name: 'Cola', price: 10000, qty: 3, unit: 'dona', station_id: null } }, O),
+    op('send', {}, O), op('pay', { payment: { id: PAY, method: 'naqd', amount: 20000 } }, O), op('pay', { payment: { id: PAY2, method: 'karta', amount: 10000 } }, O), op('close', { shift_id: SH4 }, O)]);
+  ok(r.results.every((x) => x.ok), 'chek yopildi: 20 000 naqd + 10 000 karta', r.results);
+  r = await call('GET', '/api/shift/report?id=' + SH4, null, DEV);
+  ok(r.summary.expected_cash === 120000 && r.summary.by_method.naqd === 20000, 'oldin: kassada 120 000 bo\'lishi kerak', r.summary);
+  r = await call('POST', '/api/order/pay-method', { order_id: O, payment_id: PAY, method: 'click' }, DEV);
+  ok(r.status === 401 || r.status === 403, 'kassa qurilmasi (rahbar emas) o\'zgartira olmaydi', r.status);
+  r = await call('POST', '/api/order/pay-method', { order_id: O, payment_id: PAY, method: 'qarz' }, SES);
+  ok(r.status === 400, 'qarzga o\'tkazib bo\'lmaydi (mijoz qarzi alohida yuritiladi)', r.status);
+  r = await call('POST', '/api/order/pay-method', { order_id: O, payment_id: 'yoq', method: 'karta' }, SES);
+  ok(r.status === 409 && r.error === 'no_payment', 'yo\'q to\'lov — rad etiladi', r);
+  r = await call('POST', '/api/order/pay-method', { order_id: O, payment_id: PAY, method: 'click' }, SES);
+  ok(r.ok && r.from === 'naqd' && r.to === 'click' && !r.shift_closed, 'naqd → Click (smena ochiq)', r);
+  r = await call('POST', '/api/order/pay-method', { order_id: O, payment_id: PAY, method: 'click' }, SES);
+  ok(r.ok && r.already, 'takror so\'rov hech narsani o\'zgartirmaydi', r);
+  r = await call('GET', '/api/shift/report?id=' + SH4, null, DEV);
+  ok(r.summary.expected_cash === 100000 && r.summary.by_method.naqd === 0 && r.summary.by_method.click === 20000 && r.summary.total === 30000,
+    'smena hisoboti: naqd 0, Click 20 000, kassada 100 000; savdo o\'zgarmadi', r.summary);
+  r = await call('GET', `/api/reports/summary?from=${today()}&to=${today()}`, null, SES);
+  const mth = Object.fromEntries(r.methods.map((x) => [x.method, x.sum]));
+  ok((mth.click || 0) >= 20000, 'Savdo hisobotida to\'lov turi yangilangan', r.methods);
+  r = await call('GET', '/api/reports/order?id=' + O, null, SES);
+  const pm = r.ops.find((x) => x.type === 'pay_method');
+  ok(pm && pm.data.from === 'naqd' && pm.data.to === 'click' && pm.user_id === OWNER && r.order.payments.find((x) => x.id === PAY).changed?.from === 'naqd',
+    'buyurtma tarixida: kim, nimadan nimaga', pm);
+  // smena yopilgandan keyin: Z-hisobot qayta hisoblanadi (kassada bo'lishi kerak va farq)
+  await sync([op('shift.close', { shift_id: SH4, counted: 100000 })]);
+  r = await call('GET', '/api/shift/report?id=' + SH4, null, DEV);
+  ok(r.shift.status === 'closed' && r.summary.diff === 0, 'smena yopildi, farq 0', r.summary);
+  r = await call('POST', '/api/order/pay-method', { order_id: O, payment_id: PAY2, method: 'naqd' }, SES);
+  ok(r.ok && r.shift_closed, 'yopilgan smenadagi chek: karta → naqd', r);
+  r = await call('GET', '/api/shift/report?id=' + SH4, null, DEV);
+  ok(r.summary.expected_cash === 110000 && r.summary.diff === -10000 && r.summary.by_method.karta === 0 && r.summary.counted_cash === 100000,
+    'Z-hisobot to\'g\'rilandi: kassada 110 000 bo\'lishi kerak edi, farq −10 000', r.summary);
+  const shs = await call('GET', '/api/reports/shifts', null, SES);
+  ok(shs.shifts.find((x) => x.id === SH4)?.expected_cash === 110000, 'smenalar ro\'yxatida ham yangilangan', shs.shifts.find((x) => x.id === SH4));
+  // qarzga yozilgan to'lovga tegilmaydi; ochiq buyurtmada ham yo'q
+  const O2 = id('o'); const P3 = id('y'); const SH5 = id('s'); await sync([op('shift.open', { shift_id: SH5, cash: 0 })]);
+  r = await sync([op('open', { type: 'olib', number: 1, shift_id: SH5 }, O2), op('add', { item: { id: id('i'), product_id: cola, name: 'Cola', price: 10000, qty: 1, unit: 'dona', station_id: null } }, O2)]);
+  r = await call('POST', '/api/order/pay-method', { order_id: O2, payment_id: P3, method: 'karta' }, SES);
+  ok(r.status === 409 && r.error === 'not_closed', 'ochiq buyurtmada o\'zgartirilmaydi', r);
+  r = await call('POST', '/api/order/pay-method', { order_id: 'yoq-buyurtma', payment_id: P3, method: 'karta' }, SES);
+  ok(r.status === 404, 'yo\'q buyurtma — 404', r.status);
+  await sync([op('void', { reason: 'sinov', shift_id: SH5 }, O2)]);
+  r = await sync([op('shift.close', { shift_id: SH5, counted: 0 })]);
+  ok(r.results[0].ok, 'sinov smenasi yopildi (keyingi sinovlarga ochiq smena qolmaydi)', r.results[0]);
+}
+
+// ---------- Analitika ----------
+group('Analitika: oldingi davr bilan solishtirish, ABC, hafta kuni va soat');
+{
+  const day = today(); const yest = new Date(Date.parse(day) - 86400e3).toISOString().slice(0, 10);
+  const sumOf = (rows, k) => rows.reduce((a, x) => a + x[k], 0);
+  let a = await call('GET', `/api/reports/analytics?from=${day}&to=${day}`, null, SES);
+  const p = await call('GET', `/api/reports/profit?from=${day}&to=${day}`, null, SES);
+  ok(a.status === 200 && a.days_n === 1 && a.prev.from === yest && a.prev.to === yest, 'bir kunlik davr — kechagi kun bilan solishtiriladi', a.prev);
+  ok(a.cur.revenue === p.totals.revenue && a.cur.gross === p.totals.gross && a.cur.net === p.totals.net && a.cur.orders === p.totals.orders, 'pul raqamlari Foyda hisoboti bilan bir xil', [a.cur, p.totals]);
+  ok(a.cur.avg_check === Math.round(a.cur.revenue / a.cur.orders), 'o\'rtacha chek = savdo ÷ buyurtma');
+  ok(a.old.revenue === 0 && a.old.orders === 0, 'kecha savdo yo\'q');
+  ok(a.days.length === 1 && a.days[0].sum === a.cur.revenue && a.prev_days.length === 1 && a.prev_days[0].sum === 0, 'kunlar qatori: bo\'sh kun ham bor');
+  ok(a.weekdays.length === 7 && sumOf(a.weekdays, 'sum') === a.cur.revenue && sumOf(a.weekdays, 'n') === a.cur.orders, 'hafta kunlari yig\'indisi savdoga teng');
+  ok(sumOf(a.heat, 'sum') === a.cur.revenue && sumOf(a.hours, 'n') === a.cur.orders, 'kun × soat kesimi yig\'indisi savdoga teng');
+  const itemsRev = sumOf(a.items, 'revenue');
+  ok(a.items.length > 0 && itemsRev === p.totals.items_revenue, 'taomlar savdosi Foyda hisobotidagi bilan teng', [itemsRev, p.totals.items_revenue]);
+  ok(a.abc.A.n + a.abc.B.n + a.abc.C.n === a.items.length && a.abc.A.revenue + a.abc.B.revenue + a.abc.C.revenue === itemsRev, 'ABC: har taom bitta sinfda');
+  ok(a.items[0].cls === 'A' && a.items.every((x, i) => !i || a.items[i - 1].revenue >= x.revenue), 'eng ko\'p sotilgan taom — A, ro\'yxat savdo bo\'yicha');
+  ok(sumOf(a.categories, 'revenue') === itemsRev && sumOf(a.categories, 'profit') === sumOf(a.items, 'profit'), 'toifalar yig\'indisi taomlarnikiga teng');
+  ok(a.items.every((x) => x.prev_revenue === 0), 'oldingi davrda sotilmagan');
+
+  const dead = (await call('POST', '/api/admin/product', { name: 'Sotilmaydigan taom', price: 77000, category_id: cat }, SES)).id;
+  a = await call('GET', `/api/reports/analytics?from=${day}&to=${day}`, null, SES);
+  const dr = a.dead.find((x) => x.id === dead);
+  ok(dr && dr.last_sold === null && dr.price === 77000 && a.dead_n >= 1, 'sotilmagan taom ro\'yxatda', dr);
+  ok(!a.dead.some((x) => a.items.some((i) => i.product_id === x.id)), 'sotilgan taom "sotilmagan"lar ichida yo\'q');
+
+  // Bitta buyurtmani kechagi kunga suramiz — oldingi davr va "pasaygan" ro'yxati
+  const one = await db.first("SELECT o.id, o.total::float8 AS total FROM orders o WHERE o.company_id = (SELECT company_id FROM users WHERE id = ?) AND o.status = 'closed' ORDER BY o.closed_at LIMIT 1", OWNER);
+  await db.run("UPDATE orders SET closed_at = closed_at - interval '1 day' WHERE id = ? /* tenant:global */", one.id);
+  await db.run("UPDATE order_items SET closed_at = closed_at - interval '1 day' WHERE order_id = ? /* tenant:global */", one.id);
+  const b = await call('GET', `/api/reports/analytics?from=${day}&to=${day}`, null, SES);
+  ok(b.old.orders >= 1 && b.old.revenue >= one.total && b.cur.revenue + b.old.revenue >= p.totals.revenue, 'kechaga surilgan buyurtma oldingi davrda', [b.old, one]);
+  ok(b.items.some((x) => x.prev_revenue > 0) || b.gone.length > 0, 'taomda oldingi davr savdosi ko\'rinadi');
+  const w = await call('GET', `/api/reports/analytics?from=${yest}&to=${day}`, null, SES);
+  ok(w.days_n === 2 && w.days.length === 2 && w.cur.revenue === b.cur.revenue + b.old.revenue && sumOf(w.weekdays, 'days') === 2, 'ikki kunlik davr ikkalasini qo\'shadi', w.cur);
+  await db.run("UPDATE orders SET closed_at = closed_at + interval '1 day' WHERE id = ? /* tenant:global */", one.id);
+  await db.run("UPDATE order_items SET closed_at = closed_at + interval '1 day' WHERE order_id = ? /* tenant:global */", one.id);
+
+  let r = await call('GET', `/api/reports/analytics?from=${day}&to=${yest}`, null, SES);
+  ok(r.status === 400, 'teskari sana — 400', r.status);
+  r = await call('GET', '/api/reports/analytics?from=2020-01-01&to=2026-01-01', null, SES);
+  ok(r.status === 400, '400 kundan uzun davr — 400', r.status);
+  r = await call('GET', `/api/reports/analytics?from=${day}&to=${day}`, null, DEV);
+  ok(r.status === 401 || r.status === 403, 'qurilma belgisi bilan (rahbar emas) ochilmaydi', r.status);
+}
+
 // ---------- Telegram bot ----------
 group('Telegram bot: buyurtma kassaga tushadi, holat botga qaytadi');
 {

@@ -6,7 +6,7 @@
  */
 import { get, post, deviceToken, sessionToken, setSession, sessionUser, postsInFlight } from './api.js';
 import { $, $$, esc, sum, som, qty, time, date, dateTime, today, dayShift, icon, toast, openModal, confirmBox, moneyInput, moneyVal, numVal, initials, qtyParse, qtyVal, MARK } from './ui.js';
-import { ROLES, ROLE_NAMES, PAY_NAMES, TYPE_NAMES, totals, botStatusName } from './core.js';
+import { ROLES, ROLE_NAMES, PAY_NAMES, PAY_METHODS, TYPE_NAMES, totals, botStatusName } from './core.js';
 import { pinHash, sameHex } from './pin.js';
 
 const A = { page: 'dash', boot: null, user: sessionUser(), range: { from: today(), to: today() } };
@@ -20,8 +20,8 @@ const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 /** Boshqaruv — bo'limlar va ularning sahifalari; hammasi yon panelda doim ko'rinib turadi. */
 const SECTIONS = [
   ['dash', 'home', 'Bosh sahifa', [['dash', 'Bosh sahifa']]],
-  ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
-  ['stock', 'box', 'Ombor', [['stock', 'Masalliqlar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['today', 'Bugungi harakat']]],
+  ['rep', 'chart', 'Hisobotlar', [['profit', 'Foyda'], ['analytics', 'Analitika'], ['orders', 'Buyurtmalar (cheklar)'], ['sales', 'Savdo'], ['shifts', 'Smenalar'], ['material', 'Moddiy hisobot']]],
+  ['stock', 'box', 'Ombor', [['stock', 'Masalliqlar'], ['docs', 'Kirim'], ['waste', 'Utilizatsiya'], ['inv', 'Inventarizatsiya'], ['today', 'Bugungi harakat']]],
   ['menu', 'list', 'Menyu', [['menu', 'Taomlar va texkarta'], ['mods', 'Qo\'shimchalar'], ['cats', 'Toifalar va sexlar']]],
   ['money', 'wallet', 'Pul', [['expenses', 'Rasxod'], ['debts', 'Nasiya'], ['suppliers', 'Yetkazib beruvchilar']]],
   ['set', 'gear', 'Sozlamalar', [['settings', 'Restoran, bot, parol'], ['staff', 'Xodimlar'], ['halls', 'Zal va stollar']]],
@@ -253,6 +253,130 @@ PAGES.sales = async (m) => {
       ${d.voids.length ? `<table class="tbl"><thead><tr><th>Vaqt</th><th>№</th><th>Sabab</th><th>Ruxsat</th></tr></thead><tbody>
       ${d.voids.map((x) => `<tr><td>${dateTime(x.closed_at)}</td><td>${esc(x.number ?? '')}</td><td>${esc(x.reason || '')}</td><td>${esc(U(x.by))}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Yo\'q</div>'}</div></div></div>`;
   $('#xl').onclick = () => csv(`savdo_${A.range.from}_${A.range.to}`, ['Taom', 'Soni', 'Birlik', 'Summa'], d.items.map((i) => [i.name, String(i.qty).replace('.', ','), i.unit, i.sum]));
+};
+
+// =================== Analitika ===================
+const DOW = ['', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
+const DOW_S = ['', 'Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Yak'];
+const dm = (day) => `${day.slice(8)}.${day.slice(5, 7)}`;
+/** O'zgarish belgisi: +12,4% (yashil) / −8% (qizil). `inverse` — oshishi yomon bo'lgan ko'rsatkich. Oldin 0 bo'lsa foiz yo'q. */
+function delta(now, was, inverse = false) {
+  if (!was) return now ? '<span class="delta new">yangi</span>' : '';
+  const p = Math.round(((now - was) / Math.abs(was)) * 1000) / 10;
+  if (!p) return '<span class="delta">0%</span>';
+  const good = inverse ? p < 0 : p > 0;
+  return `<span class="delta ${good ? 'up' : 'down'}">${p > 0 ? '+' : '−'}${String(Math.abs(p)).replace('.', ',')}%</span>`;
+}
+const kpi = (l, now, was, fmt = sum, extra = '', cls = '') => `<div class="stat ${cls}"><div class="l">${esc(l)}</div><div class="v">${fmt(now)}</div>
+  <div class="s">${delta(now, was)} <span>oldin ${fmt(was)}</span>${extra ? ` · ${extra}` : ''}</div></div>`;
+
+/** Juft ustunlar: kulrang — oldingi davr, to'q — tanlangan davr. Kun ko'p bo'lsa bir necha kun bitta ustunga yig'iladi. */
+function bars2(cur, old) {
+  const step = Math.max(1, Math.ceil(cur.length / 31));
+  const pack = (rows) => { const out = []; for (let i = 0; i < rows.length; i += step) { const ch = rows.slice(i, i + step); out.push({ day: ch[0].day, to: ch[ch.length - 1].day, sum: ch.reduce((s, r) => s + r.sum, 0) }); } return out; };
+  const a = pack(cur); const b = pack(old);
+  const max = Math.max(1, ...a.map((r) => r.sum), ...b.map((r) => r.sum));
+  const h = (v) => Math.max(2, (v / max) * 150);
+  return `<div class="bars two">${a.map((r, i) => `<div class="b" title="${esc(dm(r.day))}${step > 1 ? '–' + esc(dm(r.to)) : ''}: ${esc(sum(r.sum))} · oldin ${esc(sum(b[i]?.sum || 0))}">
+    <div class="pair"><i class="old" style="height:${h(b[i]?.sum || 0)}px"></i><i style="height:${h(r.sum)}px"></i></div><span>${esc(r.day.slice(8))}</span></div>`).join('')}</div>
+    <div class="legend"><span><i></i>Tanlangan davr</span><span><i class="old"></i>Oldingi davr</span></div>`;
+}
+
+/** Hafta kuni × soat: qaysi kuni, qaysi soatda savdo ko'p. Rang to'qligi — summaga qarab. */
+function heatmap(heat) {
+  if (!heat.length) return '<div class="empty">Ma\'lumot yo\'q</div>';
+  const hs = heat.map((r) => r.h); const h0 = Math.min(...hs); const h1 = Math.max(...hs);
+  const max = Math.max(1, ...heat.map((r) => r.sum));
+  const at = new Map(heat.map((r) => [r.dow + ':' + r.h, r]));
+  const cols = []; for (let h = h0; h <= h1; h++) cols.push(h);
+  return `<div class="heat-wrap"><div class="heat" style="grid-template-columns:44px repeat(${cols.length},minmax(26px,1fr))">
+    <span></span>${cols.map((h) => `<span class="hh">${String(h).padStart(2, '0')}</span>`).join('')}
+    ${[1, 2, 3, 4, 5, 6, 7].map((d) => `<span class="hd">${DOW_S[d]}</span>${cols.map((h) => {
+      const r = at.get(d + ':' + h); if (!r) return '<i class="c"></i>';
+      const k = r.sum / max;
+      return `<i class="c ${k > 0.55 ? 'hot' : ''}" style="background:rgba(228,87,46,${(0.1 + k * 0.9).toFixed(2)})" title="${DOW[d]} ${String(h).padStart(2, '0')}:00 — ${esc(sum(r.sum))}, ${r.n} ta buyurtma">${k > 0.3 ? r.n : ''}</i>`;
+    }).join('')}`).join('')}</div></div><div class="hint" style="margin-top:8px">Katakdagi son — buyurtmalar soni. Rang qancha to'q bo'lsa, savdo shuncha ko'p.</div>`;
+}
+
+/** Raqamlardan oddiy tilda xulosa. */
+function insights(d) {
+  const out = []; const c = d.cur; const o = d.old;
+  const add = (kind, text) => out.push(`<li class="${kind}"><i></i><div>${text}</div></li>`);
+  if (!c.orders) { add('info', 'Bu davrda yopilgan buyurtma yo\'q.'); return out; }
+  if (o.revenue) {
+    const diff = c.revenue - o.revenue; const p = Math.abs(Math.round((diff / o.revenue) * 1000) / 10);
+    if (diff > 0) add('good', `Savdo oldingi davrga nisbatan <b>${String(p).replace('.', ',')}%</b> oshdi — <b>${sum(diff)}</b> so'm ko'p.`);
+    else if (diff < 0) add('bad', `Savdo oldingi davrga nisbatan <b>${String(p).replace('.', ',')}%</b> kamaydi — <b>${sum(-diff)}</b> so'm kam.`);
+    if (o.orders && c.orders !== o.orders && o.avg_check) {
+      const oc = c.orders - o.orders; const ac = c.avg_check - o.avg_check;
+      add('info', `Buyurtmalar ${oc >= 0 ? 'ko\'paydi' : 'kamaydi'}: ${o.orders} → <b>${c.orders}</b>; o'rtacha chek ${ac >= 0 ? 'oshdi' : 'tushdi'}: ${sum(o.avg_check)} → <b>${sum(c.avg_check)}</b>.`);
+    }
+  } else add('info', 'Oldingi davrda savdo bo\'lmagan — solishtirib bo\'lmaydi.');
+  const wd = d.weekdays.filter((w) => w.days);
+  if (d.days_n >= 7 && wd.length > 1) {
+    const best = wd.reduce((a, w) => (w.avg > a.avg ? w : a)); const worst = wd.reduce((a, w) => (w.avg < a.avg ? w : a));
+    if (best.avg > 0) add('good', `Eng yaxshi kun — <b>${DOW[best.dow]}</b>: kuniga o'rtacha ${sum(best.avg)} so'm.`);
+    if (worst.dow !== best.dow) add('info', `Eng sust kun — <b>${DOW[worst.dow]}</b>: kuniga o'rtacha ${sum(worst.avg)} so'm.`);
+  }
+  if (d.hours.length) {
+    const ph = d.hours.reduce((a, h) => (h.sum > a.sum ? h : a));
+    add('info', `Eng band soat — <b>${String(ph.h).padStart(2, '0')}:00–${String(ph.h + 1).padStart(2, '0')}:00</b>: ${ph.n} ta buyurtma, ${sum(ph.sum)} so'm.`);
+  }
+  if (d.items.length) {
+    const top = d.items[0];
+    add('good', `Eng ko'p pul keltirgan taom — <b>${esc(top.name)}</b>: ${sum(top.revenue)} so'm (savdoning ${String(top.share).replace('.', ',')}%).`);
+    if (d.items.length >= 5) add('info', `Savdoning 80 foizini <b>${d.abc.A.n} ta</b> taom beryapti (jami ${d.items.length} ta taom sotilgan).`);
+  }
+  const cat = d.categories.filter((x) => x.profit > 0).sort((a, b) => b.profit - a.profit)[0];
+  if (cat && d.categories.length > 1) add('good', `Eng ko'p foyda keltirgan toifa — <b>${esc(cat.name)}</b>: ${sum(cat.profit)} so'm.`);
+  const loss = d.items.filter((i) => !i.no_cost && i.profit < 0);
+  if (loss.length) add('bad', `<b>${loss.length} ta</b> taom tannarxidan arzon sotilyapti: ${loss.slice(0, 3).map((i) => esc(i.name)).join(', ')}${loss.length > 3 ? '…' : ''}.`);
+  if (d.dead_n) add('bad', `Menyudagi ${d.menu_n} ta taomdan <b>${d.dead_n} tasi</b> bu davrda bir marta ham sotilmadi.`);
+  if (c.no_cost) add('info', `<b>${c.no_cost} ta</b> taomning tannarxi yozilmagan — foyda aslidan ko'p ko'rinishi mumkin (Menyu → Taomlar va texkarta).`);
+  return out;
+}
+
+PAGES.analytics = async (m) => {
+  const d = await S('/api/reports/analytics?' + rq());
+  const c = d.cur; const o = d.old;
+  const moved = d.items.map((i) => ({ ...i, diff: i.revenue - i.prev_revenue }));
+  const up = moved.filter((i) => i.diff > 0).sort((a, b) => b.diff - a.diff).slice(0, 8);
+  const down = [...moved.filter((i) => i.diff < 0), ...d.gone.map((g) => ({ ...g, revenue: 0, qty: 0, diff: -g.prev_revenue }))].sort((a, b) => a.diff - b.diff).slice(0, 8);
+  const mv = (rows, empty) => (rows.length ? `<table class="tbl"><thead><tr><th>Taom</th><th class="r">Oldin</th><th class="r">Hozir</th><th class="r">Farq</th></tr></thead><tbody>
+    ${rows.map((i) => `<tr><td>${esc(i.name)}</td><td class="r dim">${sum(i.prev_revenue)}</td><td class="r">${sum(i.revenue)}</td><td class="r ${i.diff > 0 ? 'pos' : 'neg'}">${i.diff > 0 ? '+' : '−'}${sum(Math.abs(i.diff))}</td></tr>`).join('')}</tbody></table>` : `<div class="empty">${empty}</div>`);
+  const ABC_T = { A: 'Asosiy — savdoning 80%', B: 'O\'rtacha — keyingi 15%', C: 'Kam sotiladi — oxirgi 5%' };
+  const wmax = Math.max(1, ...d.weekdays.map((w) => w.avg));
+
+  m.innerHTML = head('Analitika', `${rlabel()} · oldingi davr bilan solishtirilgan: ${dm(d.prev.from)}${d.prev.from === d.prev.to ? '' : ' — ' + dm(d.prev.to)}`, xlBtn('xl')) + rangeBar(() => show('analytics'))
+    + `<div class="stats mt">${kpi('Savdo', c.revenue, o.revenue, sum, '', 'accent')}${kpi('Buyurtmalar', c.orders, o.orders, (v) => String(v))}
+      ${kpi('O\'rtacha chek', c.avg_check, o.avg_check)}${kpi('Yalpi foyda', c.gross, o.gross, sum, `marja ${String(c.margin).replace('.', ',')}%`)}
+      ${kpi('Sof foyda', c.net, o.net, sum, 'rasxod va utilizatsiyadan keyin')}</div>
+    <div class="cols2 mt"><div class="card"><div class="card-h"><h3>Kunlar bo'yicha savdo</h3><span class="hint">oldingi davr bilan yonma-yon</span></div><div class="card-b">${bars2(d.days, d.prev_days)}</div></div>
+      <div class="card"><div class="card-h"><h3>Xulosa</h3></div><div class="card-b"><ul class="ins">${insights(d).join('')}</ul></div></div></div>
+    <div class="cols2 mt"><div class="card"><div class="card-h"><h3>Qaysi kuni, qaysi soatda</h3><span class="hint">Toshkent vaqti</span></div><div class="card-b">${heatmap(d.heat)}</div></div>
+      <div class="card"><div class="card-h"><h3>Hafta kunlari</h3><span class="hint">kuniga o'rtacha</span></div><div class="card-b">
+        ${d.weekdays.map((w) => `<div class="hbar"><div class="t"><span>${DOW[w.dow]} <span class="dim">· ${w.days ? w.n + ' ta buyurtma' : 'davrda yo\'q'}</span></span><b>${sum(w.avg)}</b></div><div class="track"><i style="width:${(w.avg / wmax) * 100}%"></i></div></div>`).join('')}
+        <div class="lbl" style="margin:16px 0 4px">Soatlar bo'yicha</div>${d.hours.length ? bars(d.hours.map((x) => ({ ...x, h: String(x.h).padStart(2, '0') }))) : '<div class="empty">Ma\'lumot yo\'q</div>'}</div></div></div>
+    <div class="cols2 mt"><div class="card"><div class="card-h"><h3>Toifalar</h3><span class="hint">savdodagi ulushi va foydasi</span></div><div class="tbl-wrap">
+      ${d.categories.length ? `<table class="tbl"><thead><tr><th>Toifa</th><th class="r">Taom</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">Foyda</th><th class="r">Marja</th></tr></thead><tbody>
+      ${d.categories.map((x) => `<tr><td>${esc(x.name)}<div class="track sm"><i style="width:${x.share}%"></i></div></td><td class="r">${x.n}</td><td class="r">${sum(x.revenue)}</td><td class="r dim">${String(x.share).replace('.', ',')}%</td>
+        <td class="r ${x.profit < 0 ? 'neg' : ''}">${sum(x.profit)}</td><td class="r dim">${String(x.margin).replace('.', ',')}%</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Ma\'lumot yo\'q</div>'}</div></div>
+      <div class="card"><div class="card-h"><h3>ABC tahlil</h3><span class="hint">taomlar savdoga qo'shgan hissasi bo'yicha</span></div><div class="card-b">
+        ${['A', 'B', 'C'].map((k) => `<div class="abc-row"><span class="abc ${k}">${k}</span><div><b>${d.abc[k].n} ta taom</b><div class="dim">${ABC_T[k]}</div></div><b class="v">${sum(d.abc[k].revenue)}</b></div>`).join('')}
+        <div class="hint" style="margin-top:10px">A — bularni hech qachon tugatib qo'ymang. C — menyudan olib tashlash yoki narxini qayta ko'rish kerak bo'lgan taomlar.</div></div></div></div>
+    <div class="card mt"><div class="card-h"><h3>Taomlar</h3><span class="grow"></span><span class="dim">${d.items.length} ta</span></div><div class="tbl-wrap" style="max-height:560px">
+      ${d.items.length ? `<table class="tbl"><thead><tr><th></th><th>Taom</th><th>Toifa</th><th class="r">Soni</th><th class="r">Savdo</th><th class="r">Ulushi</th><th class="r">Foyda</th><th class="r">Marja</th><th class="r">Oldingi davr</th><th class="r">O'zgarish</th></tr></thead><tbody>
+      ${d.items.map((i) => `<tr><td><span class="abc ${i.cls}">${i.cls}</span></td><td>${esc(i.name)}</td><td class="dim">${esc(i.category || '')}</td><td class="r">${qty(i.qty, i.unit === 'kg' ? 'kg' : '')}</td><td class="r">${sum(i.revenue)}</td>
+        <td class="r dim">${String(i.share).replace('.', ',')}%</td><td class="r ${i.profit < 0 ? 'neg' : ''}">${i.no_cost ? '<span class="dim">tannarx yo\'q</span>' : sum(i.profit)}</td><td class="r dim">${i.no_cost ? '' : String(i.margin).replace('.', ',') + '%'}</td>
+        <td class="r dim">${sum(i.prev_revenue)}</td><td class="r">${delta(i.revenue, i.prev_revenue)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Bu davrda sotilgan taom yo\'q</div>'}</div></div>
+    <div class="cols2 even mt"><div class="card"><div class="card-h"><h3>Eng ko'p o'sgan taomlar</h3></div><div class="tbl-wrap">${mv(up, 'O\'sgan taom yo\'q')}</div></div>
+      <div class="card"><div class="card-h"><h3>Eng ko'p pasaygan taomlar</h3></div><div class="tbl-wrap">${mv(down, 'Pasaygan taom yo\'q')}</div></div></div>
+    <div class="card mt"><div class="card-h"><h3>Sotilmagan taomlar</h3><span class="hint">menyuda bor, lekin bu davrda bir marta ham sotilmagan</span><span class="grow"></span><span class="dim">${d.dead_n} ta</span></div><div class="tbl-wrap" style="max-height:420px">
+      ${d.dead.length ? `<table class="tbl"><thead><tr><th>Taom</th><th>Toifa</th><th class="r">Narxi</th><th>Oxirgi marta sotilgan</th></tr></thead><tbody>
+      ${d.dead.map((x) => `<tr><td>${esc(x.name)}${x.stop ? ' <span class="badge warn">stopda</span>' : ''}</td><td class="dim">${esc(x.category || '')}</td><td class="r">${sum(x.price)}</td><td>${x.last_sold ? date(x.last_sold) : '<span class="dim">180 kundan beri sotilmagan</span>'}</td></tr>`).join('')}</tbody></table>
+      ${d.dead_n > d.dead.length ? `<div class="hint" style="padding:10px 14px">Ro'yxatda birinchi ${d.dead.length} tasi ko'rsatilgan.</div>` : ''}` : '<div class="empty">Menyudagi hamma taom sotilgan</div>'}</div></div>`;
+  $('#xl').onclick = () => csv(`analitika_${A.range.from}_${A.range.to}`, ['ABC', 'Taom', 'Toifa', 'Soni', 'Savdo', 'Ulushi %', 'Tannarx', 'Foyda', 'Marja %', 'Oldingi davr savdosi'],
+    d.items.map((i) => [i.cls, i.name, i.category || '', String(i.qty).replace('.', ','), i.revenue, String(i.share).replace('.', ','), i.cost, i.profit, String(i.margin).replace('.', ','), i.prev_revenue]));
 };
 
 PAGES.material = async (m) => {
@@ -547,17 +671,23 @@ PAGES.today = async (m) => {
 };
 
 /** Utilizatsiya — alohida bo'lim: yaroqsiz masalliq yoki tayyor taomni sababi bilan hisobdan chiqarish. */
-PAGES.waste = (m) => PAGES.docs(m, true);
+PAGES.waste = (m) => PAGES.docs(m, 'waste');
+// Inventarizatsiya — menyuda alohida: ilgari faqat «Kirim» sahifasidagi tugma ortida edi va egasi topolmadi.
+PAGES.inv = (m) => PAGES.docs(m, 'inv');
 
-PAGES.docs = async (m, waste = false) => {
-  const kind = waste ? 'utilizatsiya' : A.docKind || '';
+PAGES.docs = async (m, mode = '') => {
+  const waste = mode === 'waste'; const inv = mode === 'inv';
+  const kind = waste ? 'utilizatsiya' : inv ? 'inventar' : A.docKind || '';
   const d = await S(`/api/stock/docs?${rq()}&kind=${kind}`);
   const wasteSum = waste ? d.docs.filter((x) => !x.cancelled_at).reduce((s_, x) => s_ + Number(x.total || 0), 0) : 0;
   m.innerHTML = (waste
     ? head('Utilizatsiya', `${rlabel()} · buzilgan, muddati o'tgan, kuygan yoki tushib ketgan mahsulot — sababi bilan`, `<button class="btn primary" data-doc="utilizatsiya">${icon('plus')}Utilizatsiya qilish</button>`)
+    : inv ? head('Inventarizatsiya', `${rlabel()} · omborni sanab, haqiqiy qoldiqni kiriting — kamomad yoki ortiqcha o'zi hisoblanadi`, `<button class="btn primary" data-doc="inventar">${icon('check')}Inventarizatsiya qilish</button>`)
     : head('Kirim va hujjatlar', rlabel(), `<button class="btn primary" data-doc="kirim">${icon('truckin')}Kirim</button><button class="btn" data-doc="utilizatsiya">${icon('trash')}Utilizatsiya</button><button class="btn" data-doc="inventar">${icon('check')}Inventarizatsiya</button>`))
-    + rangeBar(() => show(waste ? 'waste' : 'docs'))
-    + (waste ? `<div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length)}${stat('Zarar (tannarxda)', sum(wasteSum), 'moddiy hisobotda alohida ustun')}</div>`
+    + rangeBar(() => show(waste ? 'waste' : inv ? 'inv' : 'docs'))
+    + (inv ? `<div class="card mt" style="padding:12px 16px;font-size:14px">Qanday qilinadi: <b>«Inventarizatsiya qilish»</b>ni bosing → ombordagi masalliqlarni sanab, haqiqiy miqdorini yozing (sanalmaganini bo'sh qoldiring) → Saqlash. Qoldiq shu songa tenglanadi, farq <b>Moddiy hisobot</b>dagi «Inventar / farq» ustunida ko'rinadi.</div>
+      <div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length, 'tanlangan davrda')}</div>`
+      : waste ? `<div class="stats mt">${stat('Hujjatlar', d.docs.filter((x) => !x.cancelled_at).length)}${stat('Zarar (tannarxda)', sum(wasteSum), 'moddiy hisobotda alohida ustun')}</div>`
       : `<div class="seg mt" id="kinds">${[['', 'Hammasi'], ['kirim', 'Kirim'], ['utilizatsiya', 'Utilizatsiya'], ['inventar', 'Inventarizatsiya']].map(([k, l]) => `<button data-k="${k}" class="${kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)
     + `
     <div class="card mt"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Sana</th><th>Turi</th><th>Yetkazib beruvchi / sabab</th><th class="r">Qatorlar</th><th class="r">Summa</th><th class="r">To'landi</th><th>Kim</th></tr></thead><tbody>
@@ -1033,7 +1163,7 @@ PAGES.shifts = async (m) => {
 };
 
 /** Buyurtmalar (cheklar) — kun bo'yicha hamma yopilgan va bekor qilingan buyurtma; bosilsa — ichi va tarixi. */
-const OP_NAMES = { open: 'Ochildi', add: 'Taom qo\'shildi', qty: 'Soni o\'zgardi', remove: 'Olib tashlandi (yuborilmagan)', comment: 'Izoh', send: 'Oshxonaga yuborildi',
+const OP_NAMES = { pay_method: 'To\'lov turi o\'zgartirildi', open: 'Ochildi', add: 'Taom qo\'shildi', qty: 'Soni o\'zgardi', remove: 'Olib tashlandi (yuborilmagan)', comment: 'Izoh', send: 'Oshxonaga yuborildi',
   cancel: 'Taom bekor qilindi', discount: 'Chegirma', service: 'Xizmat haqi', guests: 'Mehmonlar soni', waiter: 'Ofitsiant', move: 'Stol almashtirildi', meta: 'Mijoz ma\'lumoti',
   ext: 'Bot holati', precheck: 'Hisob chiqarildi', pay: 'To\'lov', unpay: 'To\'lov bekor qilindi', close: 'Yopildi', void: 'Buyurtma bekor qilindi' };
 PAGES.orders = async (m) => {
@@ -1076,6 +1206,18 @@ PAGES.orders = async (m) => {
   $$('[data-o]', m).forEach((r) => r.onclick = () => orderModal(r.dataset.o));
 };
 
+/** To'lov turini tanlash (yopilgan chekdagi xatoni tuzatish uchun). Tanlangan turni qaytaradi yoki undefined. */
+function payMethodBox(p) {
+  return openModal({
+    title: 'To\'lov turini o\'zgartirish',
+    body: `<p style="font-size:15px;margin-bottom:12px">Summa <b>${sum(p.amount)}</b> — hozir <b>${esc(PAY_NAMES[p.method] || p.method)}</b>. To'g'ri turini tanlang:</p>
+      <div class="chips" style="gap:8px">${PAY_METHODS.filter((x) => x !== 'qarz' && x !== p.method).map((x) => `<button class="btn" type="button" data-to="${x}">${esc(PAY_NAMES[x])}</button>`).join('')}</div>
+      <p class="hint" style="margin-top:12px">Summa o'zgarmaydi. Hisobotlar va smena hisoboti (kassada bo'lishi kerak bo'lgan naqd) o'zi qayta hisoblanadi; o'zgarish buyurtma tarixiga yoziladi.</p>`,
+    foot: '<button class="btn" data-x>Bekor</button>',
+    onOpen: (mm, close) => $$('[data-to]', mm).forEach((b) => b.onclick = () => close(b.dataset.to)),
+  });
+}
+
 async function orderModal(id) {
   let d; try { d = await S('/api/reports/order?id=' + encodeURIComponent(id)); } catch (e) { fail(e); return; }
   const o = d.order; const t = totals(o);
@@ -1084,7 +1226,7 @@ async function orderModal(id) {
   const row = (l, v, c = '') => `<div class="kv"><span>${esc(l)}</span><b class="${c}">${v}</b></div>`;
   const items = o.items.map((i) => `<tr style="${i.status === 'cancelled' ? 'opacity:.55' : ''}"><td>${esc(i.name)}${i.status === 'cancelled' ? `<div class="neg" style="font-size:12px">bekor: ${esc(i.cancel_reason || '')}${i.cancelled_by ? ` · ruxsat: ${esc(U[i.cancelled_by] || '')}` : ''}</div>` : ''}${i.comment ? `<div class="dim" style="font-size:12px">${esc(i.comment)}</div>` : ''}</td>
     <td class="r">${qty(i.qty, i.unit === 'kg' ? 'kg' : '')}</td><td class="r">${sum(i.price)}</td><td class="r" style="${i.status === 'cancelled' ? 'text-decoration:line-through' : ''}">${sum(Math.round(i.price * i.qty))}</td></tr>`).join('');
-  const log = (d.ops || []).filter((x) => !x.error).map((x) => `<div class="lg"><span class="dim">${time(x.at)}</span><span>${esc(OP_NAMES[x.type] || x.type)}${x.type === 'add' && x.data?.item ? ` — ${esc(x.data.item.name)}` : ''}${x.type === 'pay' && x.data?.payment ? ` — ${esc(PAY_NAMES[x.data.payment.method] || '')} ${sum(x.data.payment.amount)}` : ''}${x.type === 'cancel' && x.data?.reason ? ` — ${esc(x.data.reason)}` : ''}</span><span class="dim">${esc(U[x.user_id] || (x.user_id === 0 ? 'Tizim' : ''))}</span></div>`).join('');
+  const log = (d.ops || []).filter((x) => !x.error).map((x) => `<div class="lg"><span class="dim">${time(x.at)}</span><span>${esc(OP_NAMES[x.type] || x.type)}${x.type === 'add' && x.data?.item ? ` — ${esc(x.data.item.name)}` : ''}${x.type === 'pay' && x.data?.payment ? ` — ${esc(PAY_NAMES[x.data.payment.method] || '')} ${sum(x.data.payment.amount)}` : ''}${x.type === 'cancel' && x.data?.reason ? ` — ${esc(x.data.reason)}` : ''}${x.type === 'pay_method' ? ` — ${esc(PAY_NAMES[x.data?.from] || '')} → ${esc(PAY_NAMES[x.data?.to] || '')} ${sum(x.data?.amount)}` : ''}</span><span class="dim">${esc(U[x.user_id] || (x.user_id === 0 ? 'Tizim' : ''))}</span></div>`).join('');
   openModal({
     title: `Buyurtma №${o.number ?? ''} — ${TYPE_NAMES[o.type] || o.type}${o.status === 'void' ? ' (bekor qilingan)' : ''}`, size: 'wide',
     body: `<div class="grid2" style="gap:6px 24px;margin-bottom:12px">${row('Ochildi', dateTime(o.opened_at))}${row(o.status === 'void' ? 'Bekor qilindi' : 'Yopildi', o.closed_at ? dateTime(o.closed_at) : '—')}
@@ -1096,8 +1238,19 @@ async function orderModal(id) {
       <table class="tbl"><thead><tr><th>Taom</th><th class="r">Soni</th><th class="r">Narxi</th><th class="r">Summa</th></tr></thead><tbody>${items}</tbody></table>
       <div style="max-width:320px;margin:12px 0 0 auto">${row('Taomlar', sum(t.subtotal))}${t.discount ? row(`Chegirma${o.discount?.kind === 'pct' ? ` (${o.discount.value}%)` : ''}${o.discount?.reason ? ' — ' + o.discount.reason : ''}`, '−' + sum(t.discount), 'neg') : ''}
         ${t.service ? row(`Xizmat haqi (${o.service_pct}%)`, sum(t.service)) : ''}${row('Jami', sum(t.total))}
-        ${o.payments.filter((p) => !p.void).map((p) => row(PAY_NAMES[p.method] || p.method, sum(p.amount))).join('')}</div>
-      ${log ? `<div class="lbl" style="margin:16px 0 6px">Tarix — kim nima qildi</div><div class="olog">${log}</div>` : ''}` });
+        ${o.payments.filter((p) => !p.void).map((p) => `<div class="kv"><span>${esc(PAY_NAMES[p.method] || p.method)}${p.changed ? ` <span class="dim">(${esc(PAY_NAMES[p.changed.from] || p.changed.from)} edi)</span>` : ''}${o.status === 'closed' && p.method !== 'qarz'
+          ? ` <button class="btn sm ghost" type="button" data-pm="${esc(p.id)}" style="margin-left:6px">${icon('edit')}O'zgartirish</button>` : ''}</span><b>${sum(p.amount)}</b></div>`).join('')}</div>
+      ${log ? `<div class="lbl" style="margin:16px 0 6px">Tarix — kim nima qildi</div><div class="olog">${log}</div>` : ''}`,
+    onOpen: (mm, close) => $$('[data-pm]', mm).forEach((b) => b.onclick = async () => {
+      const p = o.payments.find((x) => x.id === b.dataset.pm); if (!p) return;
+      const to = await payMethodBox(p); if (!to) return;
+      try {
+        const r = await P('/api/order/pay-method', { order_id: o.id, payment_id: p.id, method: to });
+        toast(`To'lov turi o'zgartirildi: ${PAY_NAMES[p.method]} → ${PAY_NAMES[to]}${r.shift_closed ? ' · smena hisoboti ham to\'g\'rilandi' : ''}`, 'ok');
+        close(); if (A.page === 'orders') await show('orders');
+        orderModal(o.id);
+      } catch (e) { fail(e); }
+    }) });
 }
 
 // ---- Sozlamalar ----

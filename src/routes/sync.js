@@ -344,3 +344,51 @@ export async function shiftReport(req, env, db, auth) {
   const orders = (await db.all("SELECT doc FROM orders WHERE company_id = ? AND shift_id = ? AND status <> 'open'", auth.c, sh.id)).map((r) => r.doc);
   return json({ ok: true, shift: sh, summary: shiftSummary(sh, orders, await shiftMoves(db, auth.c, sh.id)) });
 }
+
+/**
+ * Yopilgan chekdagi to'lov turini tuzatish — kassir "Naqd" o'rniga "Karta" bosib yuborgan bo'lsa. Faqat rahbar.
+ * Summa o'zgarmaydi, faqat turi. Uch joy birga yangilanadi: buyurtma hujjati, `payments` (hisobotlar shundan) va —
+ * smena allaqachon yopilgan bo'lsa — Z-hisobot (kassada bo'lishi kerak bo'lgan naqd va farq qayta hisoblanadi).
+ * Qarzga yozilgan to'lovga tegilmaydi: unda mijozning qarz daftari ham bor — u Nasiya bo'limida yopiladi.
+ * Har o'zgarish buyurtma tarixiga yoziladi (kim, qachon, nimadan nimaga).
+ */
+export async function changePayMethod(req, env, db, auth) {
+  const b = await body(req);
+  const method = String(b.method || '');
+  if (!PAY_METHODS.includes(method) || method === 'qarz') return fail(400, 'bad_method', 'To\'lov turi noto\'g\'ri');
+  let out;
+  try {
+    out = await db.tx(async (tx) => {
+      const row = await tx.first('SELECT doc FROM orders WHERE company_id = ? AND id = ? FOR UPDATE', auth.c, String(b.order_id || ''));
+      if (!row) throw new OpError('not_found', 'Buyurtma topilmadi');
+      const doc = row.doc;
+      if (doc.status !== 'closed') throw new OpError('not_closed', 'To\'lov turi faqat yopilgan chekda o\'zgartiriladi');
+      const p = (doc.payments || []).find((x) => x.id === b.payment_id && !x.void);
+      if (!p) throw new OpError('no_payment', 'To\'lov topilmadi');
+      if (p.method === 'qarz') throw new OpError('debt', 'Qarzga yozilgan to\'lov bu yerda o\'zgartirilmaydi — Pul → Nasiya bo\'limida mijoz qarzini yoping');
+      if (p.method === method) return { already: true, order: doc };
+      const from = p.method; const at = new Date().toISOString();
+      p.method = method; p.changed = { from, by: auth.u || null, at };
+      await tx.run('UPDATE orders SET doc = ?::jsonb, updated_at = now() WHERE company_id = ? AND id = ?', JSON.stringify(doc), auth.c, doc.id);
+      await tx.run('UPDATE payments SET method = ? WHERE company_id = ? AND order_id = ? AND id = ?', method, auth.c, doc.id, p.id);
+      await tx.run('INSERT INTO ops (company_id, id, order_id, type, user_id, at, data, device_id) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?)',
+        auth.c, 'pm' + crypto.randomUUID().replace(/-/g, ''), doc.id, 'pay_method', auth.u || null, at,
+        JSON.stringify({ payment_id: p.id, from, to: method, amount: p.amount }), auth.d || null);
+      const sh = doc.shift_id ? await tx.first('SELECT * FROM shifts WHERE company_id = ? AND id = ?', auth.c, doc.shift_id) : null;
+      let shiftFixed = false;
+      if (sh && sh.status === 'closed') {
+        const orders = (await tx.all("SELECT doc FROM orders WHERE company_id = ? AND shift_id = ? AND status <> 'open'", auth.c, sh.id)).map((r) => r.doc);
+        const s = shiftSummary(sh, orders, await shiftMoves(tx, auth.c, sh.id));
+        const counted = money(sh.counted_cash);
+        s.counted_cash = counted; s.diff = counted - s.expected_cash;
+        await tx.run('UPDATE shifts SET expected_cash = ?, summary = ?::jsonb WHERE company_id = ? AND id = ?', s.expected_cash, JSON.stringify(s), auth.c, sh.id);
+        shiftFixed = true;
+      }
+      return { order: doc, from, to: method, shift_closed: shiftFixed };
+    });
+  } catch (e) {
+    if (e instanceof OpError) return fail(e.code === 'not_found' ? 404 : 409, e.code, e.message);
+    throw e;
+  }
+  return json({ ok: true, ...out });
+}
