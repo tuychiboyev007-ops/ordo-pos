@@ -40,6 +40,9 @@ gitignore'da, faqat egasining kompyuterida. Parol/PIN'ni kodga, commitga yoki ch
 Namuna restoran: `demo@ordo.uz` / `ordo2026` (ochiq, sinov uchun).
 Egasining kirish emaili/parolini almashtirish: `node dev/egasi-kirish.mjs` — egasi O'ZI ishga tushiradi va parolni
 o'zi yozadi (`--sinov` — yozmasdan ko'rsatadi). Claude ishlab turgan tizimga parol kiritmaydi.
+Terminalda savolga javob yozish qiyin bo'lsa: `node dev/egasi-kirish.mjs yangi@email.uz --parol-yarat` — hech narsa
+so'ramaydi, parolni o'zi yaratadi, ekranga CHIQARMAYDI: clipboard'ga nusxalaydi (kirish oynasida Cmd+V) va
+`docs/LOCAL.md` ga yozadi.
 
 ## Tuzilish
 
